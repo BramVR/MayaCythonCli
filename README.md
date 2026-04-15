@@ -88,7 +88,6 @@ Tracked source stays clean because local build artifacts and local research impo
 
 ## Docs
 
-- [docs/maya-cython-pipeline-report.md](docs/maya-cython-pipeline-report.md): research report and recommended architecture
 - [docs/pipeline-quickstart.md](docs/pipeline-quickstart.md): practical setup and usage guide
 
 ## Recommended next cleanup

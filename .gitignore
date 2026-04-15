@@ -26,3 +26,6 @@ dist/
 
 # Local test notes
 docs/curvenettool-conda-test.md
+
+# Repo-local agent instructions
+AGENTS.md
