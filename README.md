@@ -1,4 +1,4 @@
-# gg_CythonCompile
+# MayaCythonCli
 
 Windows-first build pipeline for compiling Maya Python tools with Cython.
 
@@ -67,14 +67,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\assemble-module.ps1
 
 ## Key files
 
-- [environment.yml](C:/PROJECTS/GG/gg_CythonCompile/environment.yml): Conda build environment
-- [build-config.json](C:/PROJECTS/GG/gg_CythonCompile/build-config.json): package/build metadata for the scaffold
-- [setup.py](C:/PROJECTS/GG/gg_CythonCompile/setup.py): Cython/setuptools build definition
-- [scripts/create-conda-env.ps1](C:/PROJECTS/GG/gg_CythonCompile/scripts/create-conda-env.ps1): creates the local Conda env
-- [scripts/build-package.ps1](C:/PROJECTS/GG/gg_CythonCompile/scripts/build-package.ps1): compiles the configured package against Maya headers/libs
-- [scripts/smoke-package.ps1](C:/PROJECTS/GG/gg_CythonCompile/scripts/smoke-package.ps1): validates the built wheel under `mayapy`
-- [scripts/assemble-module.ps1](C:/PROJECTS/GG/gg_CythonCompile/scripts/assemble-module.ps1): creates a `.mod`-based Maya package layout
-- [src/gg_maya_tool](C:/PROJECTS/GG/gg_CythonCompile/src/gg_maya_tool): generic package scaffold for the first tracked version
+- [environment.yml](environment.yml): Conda build environment
+- [build-config.json](build-config.json): package/build metadata for the scaffold
+- [setup.py](setup.py): Cython/setuptools build definition
+- [scripts/create-conda-env.ps1](scripts/create-conda-env.ps1): creates the local Conda env
+- [scripts/build-package.ps1](scripts/build-package.ps1): compiles the configured package against Maya headers/libs
+- [scripts/smoke-package.ps1](scripts/smoke-package.ps1): validates the built wheel under `mayapy`
+- [scripts/assemble-module.ps1](scripts/assemble-module.ps1): creates a `.mod`-based Maya package layout
+- [src/gg_maya_tool](src/gg_maya_tool): generic package scaffold for the first tracked version
 
 ## Outputs
 
@@ -88,8 +88,8 @@ Tracked source stays clean because local build artifacts and local research impo
 
 ## Docs
 
-- [docs/maya-cython-pipeline-report.md](C:/PROJECTS/GG/gg_CythonCompile/docs/maya-cython-pipeline-report.md): research report and recommended architecture
-- [docs/pipeline-quickstart.md](C:/PROJECTS/GG/gg_CythonCompile/docs/pipeline-quickstart.md): practical setup and usage guide
+- [docs/maya-cython-pipeline-report.md](docs/maya-cython-pipeline-report.md): research report and recommended architecture
+- [docs/pipeline-quickstart.md](docs/pipeline-quickstart.md): practical setup and usage guide
 
 ## Recommended next cleanup
 

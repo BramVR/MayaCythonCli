@@ -4,6 +4,8 @@ Date: 2026-04-15
 
 This is the practical guide for the current repo state.
 
+Project name: `MayaCythonCli`
+
 ## Goal
 
 Build a Maya-targeted Cython package from a normal Conda environment, then validate it under Maya's own Python runtime.
@@ -51,7 +53,7 @@ This creates:
 
 The environment is defined in:
 
-- [environment.yml](C:/PROJECTS/GG/gg_CythonCompile/environment.yml)
+- [environment.yml](../environment.yml)
 
 ## Build
 
@@ -71,7 +73,7 @@ What it does:
 
 Expected output:
 
-- a wheel for the distribution configured in [build-config.json](C:/PROJECTS/GG/gg_CythonCompile/build-config.json)
+- a wheel for the distribution configured in [build-config.json](../build-config.json)
 
 ## Smoke test
 
@@ -142,4 +144,4 @@ For a real production tool, the better structure is:
 
 ## Recommended next step
 
-Replace `src/gg_maya_tool` with the first real tracked tool package and update [build-config.json](C:/PROJECTS/GG/gg_CythonCompile/build-config.json) to match.
+Replace `src/gg_maya_tool` with the first real tracked tool package and update [build-config.json](../build-config.json) to match.
