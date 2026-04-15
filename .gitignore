@@ -1,0 +1,28 @@
+# Local build environments
+.conda/
+.venv/
+
+# Research / throwaway imports
+.research-*/
+.research-curvenettool/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# IDE / editor
+.idea/
+.vscode/
+
+# Build outputs
+build/
+dist/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local test notes
+docs/curvenettool-conda-test.md

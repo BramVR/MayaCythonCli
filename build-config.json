@@ -1,0 +1,12 @@
+{
+  "distribution_name": "gg-maya-tool",
+  "package_name": "gg_maya_tool",
+  "package_dir": "src/gg_maya_tool",
+  "version": "0.1.0",
+  "compiled_modules": [
+    "_cy_logic"
+  ],
+  "package_data": [
+    "*.json"
+  ]
+}
