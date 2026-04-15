@@ -2,135 +2,111 @@
 
 Date: 2026-04-15
 
-Project name: `maya-cython-compile`
-
 ## Goal
 
-Build a Maya-targeted Cython package from a normal Conda environment, validate it under Maya's Python runtime, and assemble a Maya module layout from the produced wheel.
+Build a Maya-targeted Cython wheel from a normal Python environment, validate it under `mayapy`, and assemble a Maya module layout from the produced wheel.
 
-Current default scaffold target:
+The current scaffold is configured for:
 
-- Maya 2025
 - Windows
+- Autodesk Maya 2025
 - CPython ABI `cp311`
 
-## CLI shape
+## Prereqs
 
-Primary commands:
+You need:
 
-- `maya-cython-compile doctor`
-- `maya-cython-compile create-env`
-- `maya-cython-compile build`
-- `maya-cython-compile smoke`
-- `maya-cython-compile assemble`
-- `maya-cython-compile run`
+- Autodesk Maya installed locally
+- Conda available locally
+- Visual Studio C++ build tools available
 
-Optional local config file:
-
-- `.maya-cython-compile.json`
-
-Show resolved config:
-
-```powershell
-maya-cython-compile config show --json
-```
-
-## How the pipeline works
-
-Build side:
-
-- Conda env supplies `python`, `Cython`, `setuptools`, and `wheel`.
-- The CLI prepares a temporary target build tree from [build-config.json](../build-config.json).
-- Maya headers and the Python import library are discovered from `mayapy.exe` and injected through environment variables.
-
-Runtime side:
-
-- `mayapy` is used only for validation.
-- The built wheel is unpacked under `build/smoke/wheel/` and imported from there.
-- Module assembly expands the wheel into `dist/module/<ModuleName>/contents/scripts/`.
-
-## Local assumptions
-
-Default path assumptions:
+The default local paths are:
 
 - Conda: `C:\Users\ZO\anaconda3\condabin\conda.bat`
-- Maya 2025: `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
+- `mayapy`: `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
+- build env: `.conda/maya-cython-build`
 
-Override them with:
+Override them with CLI flags, environment variables, or `.maya-cython-compile.json`.
 
-- CLI flags
-- environment variables
-- `.maya-cython-compile.json`
+## One-Time Setup
 
-## One-time setup
-
-Install the CLI in editable mode if you want the `maya-cython-compile` command available globally in the repo environment:
+Install the CLI in editable mode if you want the `maya-cython-compile` command available directly:
 
 ```powershell
 pip install -e .
 ```
 
-Or keep using the compatibility wrappers under [scripts](../scripts).
+If you do not want to install it yet, the compatibility wrappers in [../scripts](../scripts) still work and delegate into the CLI.
 
-## Doctor
+## Start With Doctor
 
-Start here:
+Check the resolved paths and Maya runtime discovery first:
 
 ```powershell
 maya-cython-compile doctor
 ```
 
-It reports:
+Machine-readable output:
 
-- resolved config paths
+```powershell
+maya-cython-compile doctor --json
+```
+
+`doctor` reports:
+
+- resolved config values
 - whether Conda exists
-- whether the build env exists
+- whether the configured env path exists
 - whether `mayapy` exists
-- whether Maya headers/libs can be discovered
+- whether Maya headers and import libraries can be resolved
 
-## Create the Conda env
+## Create the Conda Env
 
 ```powershell
 maya-cython-compile create-env
 ```
 
-This creates:
+This creates or refreshes:
 
 - `.conda/maya-cython-build`
 
-The environment definition is:
+From:
 
-- [environment.yml](../environment.yml)
+- [../environment.yml](../environment.yml)
 
-## Build
+## Build the Wheel
 
 ```powershell
 maya-cython-compile build
 ```
 
-What it does:
+What happens:
 
-- resolves the Maya root from `mayapy.exe`
-- finds the Maya Python headers
-- finds the Maya Python import library
-- creates a temporary build tree from the tracked target package
-- runs `bdist_wheel` inside the configured Conda env
-- writes the wheel to `dist/`
+- the CLI validates the Conda env exists
+- the Maya Python include and lib paths are discovered from `mayapy`
+- old build artifacts under `build/` are cleaned
+- a temporary build tree is written under `build/target-build/`
+- `setup.py bdist_wheel` runs inside the configured Conda env
+- the built wheel is written to `dist/`
 
-## Smoke test
+## Run the Smoke Check
 
 ```powershell
 maya-cython-compile smoke
 ```
 
-What it checks:
+What it validates:
 
 - the configured package imports under `mayapy`
 - the configured compiled modules import
 - the configured smoke resource exists inside the package
-- the configured smoke callable works
+- the configured smoke callable returns successfully
 
-## Assemble Maya module
+The wheel is unpacked under:
+
+- `build/smoke/wheel/`
+
+## Assemble the Maya Module
 
 ```powershell
 maya-cython-compile assemble
@@ -141,28 +117,35 @@ Expected output:
 - `dist/module/<ModuleName>/<ModuleName>.mod`
 - `dist/module/<ModuleName>/contents/scripts/<package>/`
 
-Assembly now skips wheel metadata directories when unpacking into the Maya module payload.
+Assembly skips wheel metadata directories such as `.dist-info` and `.data`.
 
-## Run the full pipeline
+## Run the Full Flow
 
 ```powershell
 maya-cython-compile run --ensure-env
 ```
 
-Useful flags:
+Useful variants:
 
-- `--skip-smoke`
-- `--skip-assemble`
-- `--module-name <name>`
-- `--maya-version <version>`
+```powershell
+maya-cython-compile run --skip-smoke
+maya-cython-compile run --skip-assemble
+maya-cython-compile run --module-name StudioTool --maya-version 2025
+```
 
-## Current scaffold package shape
+## Current Scaffold
+
+Tracked target metadata lives in [../build-config.json](../build-config.json).
+
+Current sample target package:
+
+- [../src/maya_tool](../src/maya_tool)
 
 Compiled modules:
 
 - `maya_tool._cy_logic`
 
-Python support files kept uncompiled:
+Python modules kept uncompiled:
 
 - `maya_tool.__init__`
 - `maya_tool.bootstrap`
@@ -172,17 +155,6 @@ Bundled data files:
 
 - `tool_manifest.json`
 
-## Why this split exists
+## Next Step for a Real Tool
 
-For a real production tool, the preferred structure is still:
-
-- Python bootstrap and UI entrypoints stay Python
-- internal logic modules are compiled
-- data files remain package-relative
-- deployment happens through Maya modules
-
-The CLI is now separate from the Maya target package so the repo can be installed as a tool without requiring Maya build variables just to install the command itself.
-
-## Recommended next step
-
-Replace [src/maya_tool](../src/maya_tool) with the first real tracked tool package and update [build-config.json](../build-config.json) to match.
+Replace [../src/maya_tool](../src/maya_tool) with the real package you want to ship, then update [../build-config.json](../build-config.json) so the CLI compiles and assembles the right target.
