@@ -1,37 +1,35 @@
-# MayaCythonCli
+# maya-cython-compile
 
-Windows-first build pipeline for compiling Maya Python tools with Cython.
+Windows-first CLI for building Maya Python tools into Maya-compatible Cython extension packages.
 
-Current status:
+## What it does
 
-- research completed,
-- Conda-based build flow prototyped,
-- generic scaffold created,
-- ready for first Git commit without local test imports.
+This repo now treats the build pipeline as a CLI instead of a set of ad-hoc scripts.
 
-## What this repo does
+The default flow is:
 
-This repo is for building Python tools into Maya-compatible extension modules without using `mayapy` as the build interpreter.
+1. create a local Conda build env
+2. compile the configured package against Maya's Python headers/libs
+3. smoke-test the built wheel under `mayapy`
+4. assemble a `.mod`-based Maya module layout
 
-The current flow is:
+The build happens from a normal Python environment. `mayapy` is only used for runtime validation.
 
-1. create a local Conda env for build tools,
-2. point the build at an installed Maya runtime,
-3. compile selected package modules into `.pyd` binaries,
-4. validate imports under `mayapy`,
-5. assemble a Maya module package.
+## Commands
 
-This keeps the build toolchain isolated while still targeting Maya's embedded Python ABI.
+After installing the repo in editable mode:
 
-## Current target
+```powershell
+pip install -e .
+maya-cython-compile doctor
+maya-cython-compile create-env
+maya-cython-compile build
+maya-cython-compile smoke
+maya-cython-compile assemble
+maya-cython-compile run --ensure-env
+```
 
-Validated target:
-
-- Windows
-- Autodesk Maya 2025
-- CPython 3.11 (`cp311`)
-
-The same approach should be extended per Maya/Python target, not assumed portable across all Maya versions.
+If you do not want to install it yet, the PowerShell wrappers in [scripts](scripts) still work and now delegate into the CLI.
 
 ## Quick start
 
@@ -41,59 +39,103 @@ Prereqs:
 - Anaconda or Miniconda installed locally
 - Visual Studio C++ build tools available
 
+Inspect the resolved paths first:
+
+```powershell
+maya-cython-compile doctor
+```
+
 Create the build env:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create-conda-env.ps1
+maya-cython-compile create-env
 ```
 
 Build the wheel:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-package.ps1
+maya-cython-compile build
 ```
 
 Smoke test under Maya:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\smoke-package.ps1
+maya-cython-compile smoke
 ```
 
 Assemble the Maya module layout:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\assemble-module.ps1
+maya-cython-compile assemble
 ```
+
+Run the whole pipeline:
+
+```powershell
+maya-cython-compile run --ensure-env
+```
+
+## Config
+
+Tracked build metadata lives in [build-config.json](build-config.json).
+
+Optional local machine overrides can live in `.maya-cython-compile.json` at the repo root:
+
+```json
+{
+  "conda_exe": "C:/Users/you/anaconda3/condabin/conda.bat",
+  "env_path": ".conda/maya-cython-build",
+  "maya_py": "C:/Program Files/Autodesk/Maya2025/bin/mayapy.exe"
+}
+```
+
+Precedence is:
+
+1. CLI flags
+2. environment variables
+3. `.maya-cython-compile.json`
+4. built-in defaults
+
+Environment variable overrides:
+
+- `MAYA_CYTHON_COMPILE_CONDA_EXE`
+- `MAYA_CYTHON_COMPILE_ENV_PATH`
+- `MAYA_CYTHON_COMPILE_MAYA_PY`
+
+Show the resolved config:
+
+```powershell
+maya-cython-compile config show --json
+```
+
+## Current scaffold target
+
+Validated target:
+
+- Windows
+- Autodesk Maya 2025
+- CPython 3.11 (`cp311`)
+
+The current sample target package is [src/maya_tool](src/maya_tool).
 
 ## Key files
 
+- [pyproject.toml](pyproject.toml): CLI packaging and console entrypoint
+- [build-config.json](build-config.json): tracked target build metadata
 - [environment.yml](environment.yml): Conda build environment
-- [build-config.json](build-config.json): package/build metadata for the scaffold
-- [setup.py](setup.py): Cython/setuptools build definition
-- [scripts/create-conda-env.ps1](scripts/create-conda-env.ps1): creates the local Conda env
-- [scripts/build-package.ps1](scripts/build-package.ps1): compiles the configured package against Maya headers/libs
-- [scripts/smoke-package.ps1](scripts/smoke-package.ps1): validates the built wheel under `mayapy`
-- [scripts/assemble-module.ps1](scripts/assemble-module.ps1): creates a `.mod`-based Maya package layout
-- [src/gg_maya_tool](src/gg_maya_tool): generic package scaffold for the first tracked version
+- [src/maya_cython_compile](src/maya_cython_compile): CLI/config/pipeline implementation
+- [src/maya_tool](src/maya_tool): sample Maya package scaffold used as build input
+- [scripts](scripts): compatibility wrappers that delegate into the CLI
+- [docs/pipeline-quickstart.md](docs/pipeline-quickstart.md): practical setup and usage guide
 
 ## Outputs
 
-Tracked source stays clean because local build artifacts and local research imports are ignored by Git.
+- wheels are written to `dist/`
+- smoke extraction goes to `build/smoke/`
+- assembled Maya modules go to `dist/module/`
 
-## Known caveats
+## Notes
 
-- The scaffold is generic; real tools still need a packaging pass before they drop in cleanly.
-- Maya 2025 currently emits a PySide/shiboken NumPy warning during UI-related imports. The build and smoke test still complete.
-- The module assembly step still includes wheel metadata under the `scripts` payload. That can be cleaned up later.
-
-## Docs
-
-- [docs/pipeline-quickstart.md](docs/pipeline-quickstart.md): practical setup and usage guide
-
-## Recommended next cleanup
-
-- replace the scaffold package with the first real tracked tool package,
-- split Python entrypoints from compiled implementation modules more cleanly,
-- add Maya 2024 and Maya 2026 target configs,
-- add install/uninstall scripts for local Maya module deployment,
-- add `maya.standalone` tests in addition to the current import smoke test.
+- The scaffold is still generic; a real production tool package should replace `src/maya_tool`.
+- Maya 2025 may still emit a PySide/shiboken NumPy warning during UI-related imports.
+- Module assembly now skips wheel metadata directories when unpacking into `contents/scripts`.

@@ -2,13 +2,11 @@
 
 Date: 2026-04-15
 
-This is the practical guide for the current repo state.
-
-Project name: `MayaCythonCli`
+Project name: `maya-cython-compile`
 
 ## Goal
 
-Build a Maya-targeted Cython package from a normal Conda environment, then validate it under Maya's own Python runtime.
+Build a Maya-targeted Cython package from a normal Conda environment, validate it under Maya's Python runtime, and assemble a Maya module layout from the produced wheel.
 
 Current default scaffold target:
 
@@ -16,90 +14,126 @@ Current default scaffold target:
 - Windows
 - CPython ABI `cp311`
 
+## CLI shape
+
+Primary commands:
+
+- `maya-cython-compile doctor`
+- `maya-cython-compile create-env`
+- `maya-cython-compile build`
+- `maya-cython-compile smoke`
+- `maya-cython-compile assemble`
+- `maya-cython-compile run`
+
+Optional local config file:
+
+- `.maya-cython-compile.json`
+
+Show resolved config:
+
+```powershell
+maya-cython-compile config show --json
+```
+
 ## How the pipeline works
 
 Build side:
 
 - Conda env supplies `python`, `Cython`, `setuptools`, and `wheel`.
-- `setup.py` compiles Python modules into extension modules.
-- Maya headers and `python311.lib` are injected through environment variables.
+- The CLI prepares a temporary target build tree from [build-config.json](../build-config.json).
+- Maya headers and the Python import library are discovered from `mayapy.exe` and injected through environment variables.
 
 Runtime side:
 
 - `mayapy` is used only for validation.
-- the built wheel is unpacked and imported under Maya's Python runtime.
-- a Maya module layout is assembled from the wheel.
+- The built wheel is unpacked under `build/smoke/wheel/` and imported from there.
+- Module assembly expands the wheel into `dist/module/<ModuleName>/contents/scripts/`.
 
 ## Local assumptions
 
-Current defaults in the scripts assume:
+Default path assumptions:
 
-- Conda is at `C:\Users\ZO\anaconda3\condabin\conda.bat`
-- Maya 2025 is at `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
+- Conda: `C:\Users\ZO\anaconda3\condabin\conda.bat`
+- Maya 2025: `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
 
-If those differ on another machine, update the script parameters or defaults first.
+Override them with:
+
+- CLI flags
+- environment variables
+- `.maya-cython-compile.json`
 
 ## One-time setup
 
-Create the build env:
+Install the CLI in editable mode if you want the `maya-cython-compile` command available globally in the repo environment:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create-conda-env.ps1
+pip install -e .
+```
+
+Or keep using the compatibility wrappers under [scripts](../scripts).
+
+## Doctor
+
+Start here:
+
+```powershell
+maya-cython-compile doctor
+```
+
+It reports:
+
+- resolved config paths
+- whether Conda exists
+- whether the build env exists
+- whether `mayapy` exists
+- whether Maya headers/libs can be discovered
+
+## Create the Conda env
+
+```powershell
+maya-cython-compile create-env
 ```
 
 This creates:
 
 - `.conda/maya-cython-build`
 
-The environment is defined in:
+The environment definition is:
 
 - [environment.yml](../environment.yml)
 
 ## Build
 
-Run:
-
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-package.ps1
+maya-cython-compile build
 ```
 
 What it does:
 
-- resolves the Maya root from `mayapy.exe`,
-- finds the actual Maya Python headers,
-- finds the Maya Python import library automatically,
-- runs the build inside the Conda env,
-- writes the wheel to `dist/`.
-
-Expected output:
-
-- a wheel for the distribution configured in [build-config.json](../build-config.json)
+- resolves the Maya root from `mayapy.exe`
+- finds the Maya Python headers
+- finds the Maya Python import library
+- creates a temporary build tree from the tracked target package
+- runs `bdist_wheel` inside the configured Conda env
+- writes the wheel to `dist/`
 
 ## Smoke test
 
-Run:
-
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\smoke-package.ps1
+maya-cython-compile smoke
 ```
 
 What it checks:
 
-- the configured package imports under `mayapy`,
-- the compiled module imports,
-- packaged JSON resources are available at runtime,
-- the scaffold entrypoint works.
-
-Current smoke staging path:
-
-- `build/smoke/wheel/`
+- the configured package imports under `mayapy`
+- the configured compiled modules import
+- the configured smoke resource exists inside the package
+- the configured smoke callable works
 
 ## Assemble Maya module
 
-Run:
-
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\assemble-module.ps1
+maya-cython-compile assemble
 ```
 
 Expected output:
@@ -107,19 +141,32 @@ Expected output:
 - `dist/module/<ModuleName>/<ModuleName>.mod`
 - `dist/module/<ModuleName>/contents/scripts/<package>/`
 
-This is the current Maya-facing package layout.
+Assembly now skips wheel metadata directories when unpacking into the Maya module payload.
+
+## Run the full pipeline
+
+```powershell
+maya-cython-compile run --ensure-env
+```
+
+Useful flags:
+
+- `--skip-smoke`
+- `--skip-assemble`
+- `--module-name <name>`
+- `--maya-version <version>`
 
 ## Current scaffold package shape
 
 Compiled modules:
 
-- `gg_maya_tool._cy_logic`
+- `maya_tool._cy_logic`
 
 Python support files kept uncompiled:
 
-- `gg_maya_tool.__init__`
-- `gg_maya_tool.bootstrap`
-- `gg_maya_tool._resources`
+- `maya_tool.__init__`
+- `maya_tool.bootstrap`
+- `maya_tool._resources`
 
 Bundled data files:
 
@@ -127,21 +174,15 @@ Bundled data files:
 
 ## Why this split exists
 
-The scaffold is intentionally small so the repo can be committed cleanly without carrying a local test import.
+For a real production tool, the preferred structure is still:
 
-For a real production tool, the better structure is:
+- Python bootstrap and UI entrypoints stay Python
+- internal logic modules are compiled
+- data files remain package-relative
+- deployment happens through Maya modules
 
-- Python bootstrap and UI entrypoints stay Python,
-- internal logic modules are compiled,
-- data files are package-relative,
-- deployment happens through Maya modules, not source-path hacks.
-
-## Known issues
-
-- Maya 2025 emits a PySide/shiboken NumPy warning during UI-related imports.
-- `setup.py bdist_wheel` is used right now because `python -m build` hit sandbox/tempdir issues in this session.
-- Local research/build output directories are intentionally ignored by Git.
+The CLI is now separate from the Maya target package so the repo can be installed as a tool without requiring Maya build variables just to install the command itself.
 
 ## Recommended next step
 
-Replace `src/gg_maya_tool` with the first real tracked tool package and update [build-config.json](../build-config.json) to match.
+Replace [src/maya_tool](../src/maya_tool) with the first real tracked tool package and update [build-config.json](../build-config.json) to match.
