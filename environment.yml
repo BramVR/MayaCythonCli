@@ -1,4 +1,4 @@
-name: gg-maya-cython-build
+name: maya-cython-build
 channels:
   - defaults
 dependencies:

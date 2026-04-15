@@ -1,7 +1,24 @@
 [build-system]
 requires = [
-    "setuptools>=68",
+    "setuptools>=69",
     "wheel",
-    "Cython>=3.0",
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "maya-cython-compile"
+version = "0.1.0"
+description = "CLI for building Maya-targeted Cython packages from a standard Python environment."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "ZO" }]
+
+[project.scripts]
+maya-cython-compile = "maya_cython_compile.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["maya_cython_compile*"]

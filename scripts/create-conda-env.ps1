@@ -3,16 +3,23 @@ param(
 )
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$envPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $EnvPath))
-$condaExe = "C:\Users\ZO\anaconda3\condabin\conda.bat"
+$env:PYTHONPATH = Join-Path $repoRoot "src"
+$py = Get-Command py -ErrorAction SilentlyContinue
+$python = Get-Command python -ErrorAction SilentlyContinue
+$localPython = Join-Path $repoRoot ".conda\curvenet-build\python.exe"
 
-if (-not (Test-Path $condaExe)) {
-    throw "Conda was not found at $condaExe"
+if ($py) {
+    & $py.Source -3 -m maya_cython_compile create-env --repo-root $repoRoot --env-path $EnvPath
 }
-
-& $condaExe env create --prefix $envPath --force --file (Join-Path $repoRoot "environment.yml")
+elseif ($python) {
+    & $python.Source -m maya_cython_compile create-env --repo-root $repoRoot --env-path $EnvPath
+}
+elseif (Test-Path $localPython) {
+    & $localPython -m maya_cython_compile create-env --repo-root $repoRoot --env-path $EnvPath
+}
+else {
+    throw "No Python interpreter found for CLI wrapper."
+}
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to create Conda environment at $envPath"
+    throw "CLI create-env failed."
 }
-
-Write-Host "Created Conda environment at $envPath"

@@ -27,5 +27,8 @@ dist/
 # Local test notes
 docs/curvenettool-conda-test.md
 
+# Local CLI config
+.maya-cython-compile.json
+
 # Repo-local agent instructions
 AGENTS.md

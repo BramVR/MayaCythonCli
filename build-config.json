@@ -1,12 +1,21 @@
 {
-  "distribution_name": "gg-maya-tool",
-  "package_name": "gg_maya_tool",
-  "package_dir": "src/gg_maya_tool",
+  "distribution_name": "maya-tool",
+  "package_name": "maya_tool",
+  "package_dir": "src/maya_tool",
+  "module_name": "MayaTool",
+  "maya_version": "2025",
   "version": "0.1.0",
   "compiled_modules": [
     "_cy_logic"
   ],
   "package_data": [
     "*.json"
-  ]
+  ],
+  "smoke": {
+    "callable": "show_ui",
+    "compiled_modules": [
+      "_cy_logic"
+    ],
+    "resource_check": "tool_manifest.json"
+  }
 }

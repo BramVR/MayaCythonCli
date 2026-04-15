@@ -3,39 +3,23 @@ param(
 )
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$config = Get-Content (Join-Path $repoRoot "build-config.json") | ConvertFrom-Json
-$distributionName = $config.distribution_name.Replace("-", "_")
-$packageName = $config.package_name
-$distDir = Join-Path $repoRoot "dist"
-$wheel = Get-ChildItem $distDir -Filter "$distributionName-*.whl" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$env:PYTHONPATH = Join-Path $repoRoot "src"
+$py = Get-Command py -ErrorAction SilentlyContinue
+$python = Get-Command python -ErrorAction SilentlyContinue
+$localPython = Join-Path $repoRoot ".conda\curvenet-build\python.exe"
 
-if (-not $wheel) {
-    throw "No built wheel found in $distDir"
+if ($py) {
+    & $py.Source -3 -m maya_cython_compile smoke --repo-root $repoRoot --maya-py $MayaPy
 }
-
-if (-not (Test-Path $MayaPy)) {
-    throw "mayapy not found: $MayaPy"
+elseif ($python) {
+    & $python.Source -m maya_cython_compile smoke --repo-root $repoRoot --maya-py $MayaPy
 }
-
-$smokeRoot = Join-Path $repoRoot "build\smoke"
-$extractDir = Join-Path $smokeRoot "wheel"
-$zipPath = Join-Path $smokeRoot "wheel.zip"
-$resolvedExtractDir = [System.IO.Path]::GetFullPath($extractDir)
-$resolvedRepoRoot = [System.IO.Path]::GetFullPath($repoRoot)
-
-if (-not $resolvedExtractDir.StartsWith($resolvedRepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to extract outside the repo: $resolvedExtractDir"
+elseif (Test-Path $localPython) {
+    & $localPython -m maya_cython_compile smoke --repo-root $repoRoot --maya-py $MayaPy
 }
-
-New-Item -ItemType Directory -Force $smokeRoot | Out-Null
-if (Test-Path $extractDir) {
-    Remove-Item -LiteralPath $extractDir -Recurse -Force
+else {
+    throw "No Python interpreter found for CLI wrapper."
 }
-Copy-Item -LiteralPath $wheel.FullName -Destination $zipPath -Force
-Expand-Archive -LiteralPath $zipPath -DestinationPath $extractDir -Force
-
-$env:PYTHONPATH = $extractDir
-& $MayaPy -c "from pathlib import Path; import importlib; pkg = importlib.import_module('$packageName'); cy = importlib.import_module('$packageName._cy_logic'); res = importlib.import_module('$packageName._resources'); print(pkg.show_ui()); print(cy.normalize_node_name('|group|ns:ctrl')); print(Path(res.resource_path('tool_manifest.json')).exists())"
 if ($LASTEXITCODE -ne 0) {
-    throw "Smoke test failed."
+    throw "CLI smoke failed."
 }

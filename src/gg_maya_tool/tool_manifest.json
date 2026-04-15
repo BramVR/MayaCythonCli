@@ -1,5 +1,0 @@
-{
-  "name": "gg_maya_tool",
-  "description": "Generic Maya+Cython scaffold package",
-  "entrypoint": "gg_maya_tool.show_ui"
-}

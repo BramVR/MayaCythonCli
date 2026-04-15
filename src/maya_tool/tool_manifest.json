@@ -1,0 +1,4 @@
+{
+  "name": "maya_tool",
+  "entrypoint": "maya_tool.show_ui"
+}

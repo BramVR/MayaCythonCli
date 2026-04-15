@@ -1,5 +1,44 @@
-import os
+from __future__ import annotations
+
 import json
+import shutil
+from pathlib import Path
+
+from .config import ResolvedConfig
+
+
+def prepare_build_tree(config: ResolvedConfig) -> Path:
+    build_root = config.repo_root / "build" / "target-build"
+    if build_root.exists():
+        shutil.rmtree(build_root)
+
+    package_source = config.repo_root / config.build.package_dir
+    package_target = build_root / config.build.package_dir
+    package_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(package_source, package_target)
+
+    (build_root / "build-config.json").write_text(
+        json.dumps(
+            {
+                "distribution_name": config.build.distribution_name,
+                "package_name": config.build.package_name,
+                "package_dir": config.build.package_dir,
+                "version": config.build.version,
+                "compiled_modules": config.build.compiled_modules,
+                "package_data": config.build.package_data,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (build_root / "setup.py").write_text(render_setup_py(), encoding="utf-8")
+    return build_root
+
+
+def render_setup_py() -> str:
+    return """import json
+import os
 from pathlib import Path
 
 from setuptools import Extension, setup
@@ -26,9 +65,7 @@ MAYA_PYTHON_LIBDIR = os.environ.get("MAYA_PYTHON_LIBDIR")
 MAYA_PYTHON_LIBNAME = os.environ.get("MAYA_PYTHON_LIBNAME", "python311")
 
 if not MAYA_PYTHON_INCLUDE or not MAYA_PYTHON_LIBDIR:
-    raise RuntimeError(
-        "Set MAYA_PYTHON_INCLUDE and MAYA_PYTHON_LIBDIR before building."
-    )
+    raise RuntimeError("Set MAYA_PYTHON_INCLUDE and MAYA_PYTHON_LIBDIR before building.")
 
 
 def ext_source(module_name: str) -> str:
@@ -77,3 +114,4 @@ setup(
         build_dir=str(ROOT / "build" / "cython"),
     ),
 )
+"""
