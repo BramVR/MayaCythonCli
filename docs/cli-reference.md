@@ -177,7 +177,21 @@ maya-cython-compile doctor --json
 maya-cython-compile config show --json
 ```
 
-Errors are printed to stderr and the process exits non-zero.
+Errors are printed to stderr and the process exits with one of these codes:
+
+- `2`: usage or argument/config validation error before a command runs
+- `3`: dependency/setup failure, such as missing Conda, missing env, or unresolved `mayapy`
+- `4`: `build` failed
+- `5`: `smoke` failed
+- `6`: `assemble` failed
+
+Command notes:
+
+- `create-env` returns `3` on failure
+- `build` returns `3` for missing prerequisites and `4` for build-step failures
+- `smoke` returns `3` for missing `mayapy` and `5` for missing wheel or smoke-step failures
+- `assemble` returns `6` for missing wheel or module assembly failures
+- `run` returns the first failing step's exit code
 
 ## Config Resolution
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import ResolvedConfig, as_dict
-from .errors import BUILD_ERROR, CliError, DEPENDENCY_ERROR, SMOKE_ERROR
+from .errors import ASSEMBLE_ERROR, BUILD_ERROR, CliError, DEPENDENCY_ERROR, SMOKE_ERROR
 from .target_builder import prepare_build_tree
 
 
@@ -96,7 +96,7 @@ def build(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, Any]:
 
 
 def smoke(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, Any]:
-    wheel = latest_wheel(config)
+    wheel = latest_wheel(config, error_code=SMOKE_ERROR)
     if not config.local.maya_py.exists():
         raise CliError(f"mayapy not found: {config.local.maya_py}", DEPENDENCY_ERROR)
 
@@ -123,7 +123,7 @@ def assemble(
     module_name: str | None = None,
     maya_version: str | None = None,
 ) -> dict[str, Any]:
-    wheel = latest_wheel(config)
+    wheel = latest_wheel(config, error_code=ASSEMBLE_ERROR)
     resolved_module = module_name or config.build.module_name
     resolved_maya_version = maya_version or config.build.maya_version
     module_root = config.repo_root / "dist" / "module" / resolved_module
@@ -213,7 +213,7 @@ def clean_build_artifacts(repo_root: Path) -> None:
             shutil.rmtree(egg_info)
 
 
-def latest_wheel(config: ResolvedConfig) -> Path:
+def latest_wheel(config: ResolvedConfig, *, error_code: int = BUILD_ERROR) -> Path:
     dist_dir = config.repo_root / "dist"
     distribution = config.build.distribution_name.replace("-", "_")
     wheels = sorted(
@@ -222,7 +222,7 @@ def latest_wheel(config: ResolvedConfig) -> Path:
         reverse=True,
     )
     if not wheels:
-        raise CliError(f"No built wheel found in {dist_dir}", BUILD_ERROR)
+        raise CliError(f"No built wheel found in {dist_dir}", error_code)
     return wheels[0]
 
 
