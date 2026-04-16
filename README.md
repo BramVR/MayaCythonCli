@@ -2,13 +2,12 @@
 
 Windows-first CLI for building Maya Python tools into Maya-compatible Cython extension packages.
 
-The repo is now documented from `/docs` instead of keeping the full manual in the root README.
+Docs live in [`docs/`](docs/). Start with:
 
-Start with:
-
-- [docs/README.md](docs/README.md)
-- [docs/pipeline-quickstart.md](docs/pipeline-quickstart.md)
-- [docs/cli-reference.md](docs/cli-reference.md)
+- [docs/index.md](docs/index.md)
+- [docs/quickstart.md](docs/quickstart.md)
+- [docs/cli.md](docs/cli.md)
+- [docs/config.md](docs/config.md)
 - [docs/architecture.md](docs/architecture.md)
 
 Short version:
@@ -25,12 +24,12 @@ maya-cython-compile assemble --force
 maya-cython-compile run --ensure-env --force
 ```
 
-Quality checks:
+Verification:
 
 ```powershell
-python -m ruff check src tests
-python -m mypy src tests
-python -m unittest discover -s tests
+.\.conda\curvenet-build\python.exe -m ruff check src tests
+.\.conda\curvenet-build\python.exe -m mypy src tests
+.\.conda\curvenet-build\python.exe -m unittest discover -s tests
 ```
 
 Core files:

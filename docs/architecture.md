@@ -1,108 +1,74 @@
+---
+summary: "CLI ownership, package split, and how the wheel-to-module pipeline is structured."
+read_when:
+  - "When changing the pipeline shape or build-tree layout."
+  - "When moving logic between Python and PowerShell."
+---
+
 # Architecture
 
-Date: 2026-04-15
+The repo treats `maya-cython-compile` as the product. The Maya package is input to that CLI, not the package that owns the orchestration logic.
 
-## Why This Repo Is a CLI
+## Package split
 
-This repo used to lean on ad-hoc PowerShell scripts and a top-level build script. That shape was weak for three reasons:
+- [../src/maya_cython_compile](../src/maya_cython_compile) - CLI entrypoint, config resolution, and pipeline orchestration
+- [../src/maya_tool](../src/maya_tool) - sample Maya package compiled by the pipeline
 
-- the install story was not the same thing as the build story
-- Maya-specific build requirements leaked into the top-level package boundary
-- the pipeline steps were harder to test and harder to reuse from one command surface
+That split avoids coupling the builder and the thing being built into one artifact.
 
-The repo now treats the build pipeline as an installable CLI. The CLI is the product. The Maya package is build input.
-
-## Package Split
-
-The split is intentional:
-
-- [../src/maya_cython_compile](../src/maya_cython_compile): orchestration CLI
-- [../src/maya_tool](../src/maya_tool): sample Maya package compiled by the pipeline
-
-This avoids a bad coupling where the builder and the thing being built are packaged as the same artifact.
-
-## Source of Truth
+## Source of truth
 
 Tracked build metadata lives in [../build-config.json](../build-config.json).
 
 It defines:
 
 - distribution name
-- package name
-- package directory
-- module name
-- Maya version
+- package name and package directory
+- module name and Maya version
 - package version
 - compiled modules
 - package data
-- smoke-test settings
+- smoke settings
 
-Local machine-specific paths are resolved separately through:
+Local machine paths are resolved separately through CLI flags, environment variables, repo-local config, and built-in defaults. See [config.md](config.md).
 
-- CLI flags
-- environment variables
-- `.maya-cython-compile.json`
-- built-in defaults
+## Pipeline ownership
 
-That split keeps repo configuration portable while still letting each machine override local tools and paths.
+The real build flow lives in [../src/maya_cython_compile/pipeline.py](../src/maya_cython_compile/pipeline.py).
 
-The local config layer is intentionally repo-scoped: the default file is `<repo-root>/.maya-cython-compile.json`, unless `--config` points to a different file. There is no user-level or system-level config discovery in the current implementation.
+It owns:
 
-## Pipeline Ownership
+- Conda and `mayapy` validation
+- Maya include and import-lib discovery
+- build env creation
+- destructive cleanup planning through the shared `--dry-run` and `--force` contract
+- temporary target tree generation
+- wheel build execution
+- smoke validation under `mayapy`
+- Maya module assembly
 
-The CLI owns the real pipeline logic in [../src/maya_cython_compile/pipeline.py](../src/maya_cython_compile/pipeline.py).
+PowerShell wrappers under [../scripts](../scripts) are compatibility entrypoints only.
 
-That module is responsible for:
+## Temporary build tree
 
-- validating Conda and `mayapy`
-- discovering Maya headers and import libs
-- creating the build env
-- planning destructive cleanup and enforcing the shared `--dry-run` / `--force` contract
-- preparing the temporary target build tree
-- building the wheel
-- validating the wheel under `mayapy`
-- assembling the Maya module payload
+Wheel builds do not run from the tracked source tree directly. The CLI prepares a disposable build root under `build/target-build/` through [../src/maya_cython_compile/target_builder.py](../src/maya_cython_compile/target_builder.py).
 
-PowerShell is now a compatibility edge, not the source of truth. The wrappers in [../scripts](../scripts) only delegate into the CLI.
+That keeps packaging logic isolated while still generating target-specific build files.
 
-## Temporary Build Tree
+## Runtime split
 
-The tracked repo root is not used directly as the wheel build root. Instead, the CLI generates a disposable target build tree under:
+The pipeline separates build-time Python from Maya runtime validation:
 
-- `build/target-build/`
+- Conda env - used for `Cython`, `setuptools`, and wheel creation
+- `mayapy` - used for Maya ABI discovery and runtime smoke validation
 
-That build tree is prepared by [../src/maya_cython_compile/target_builder.py](../src/maya_cython_compile/target_builder.py).
+This lets the repo run from a normal Python environment without making `mayapy` the primary tool runner.
 
-This keeps the CLI packaging boundary clean while still generating a target-specific `setup.py` for the compiled wheel build.
+## Assembly model
 
-## Runtime Split
-
-The pipeline intentionally separates build-time Python from runtime validation:
-
-- Conda env: used for `Cython`, `setuptools`, and wheel creation
-- `mayapy`: used only for runtime validation and Maya ABI discovery
-
-That split matters because the repo should be operable from a normal Python environment without turning `mayapy` into the primary tool runner.
-
-## Assembly Model
-
-The wheel is the intermediate artifact.
-
-The final Maya deployment layout is assembled from that wheel into:
+The wheel is the intermediate artifact. The final Maya module payload is assembled into:
 
 - `dist/module/<ModuleName>/contents/scripts/`
 - `dist/module/<ModuleName>/<ModuleName>.mod`
 
-Assembly skips wheel metadata directories because they do not belong in the Maya module payload.
-
-## Why This Shape Was Chosen
-
-This structure follows the useful parts of the Steipete CLI examples that informed the redesign:
-
-- thin entrypoint
-- real logic in modules
-- clear config resolution
-- one command surface for humans and automation
-- compatibility wrappers at the edge instead of shell scripts owning business logic
-
-The result is easier to reason about, easier to document, and easier to grow once the scaffold package is replaced with a real tool.
+Assembly skips wheel metadata directories ending in `.dist-info` and `.data`.
