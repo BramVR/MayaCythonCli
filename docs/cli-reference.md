@@ -721,3 +721,9 @@ These scripts are compatibility entrypoints that delegate into the CLI:
 - [../scripts/build-package.ps1](../scripts/build-package.ps1)
 - [../scripts/smoke-package.ps1](../scripts/smoke-package.ps1)
 - [../scripts/assemble-module.ps1](../scripts/assemble-module.ps1)
+
+Wrapper notes:
+
+- Each wrapper exposes the matching safety switches as PowerShell flags: `-DryRun` and `-Force`.
+- The wrappers prefer the repo-local interpreter at `.conda\curvenet-build\python.exe` when it exists, then fall back to `py -3`, then `python`.
+- That interpreter preference avoids picking an older global Python that cannot run the CLI.
