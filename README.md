@@ -24,13 +24,15 @@ maya-cython-compile assemble --force
 maya-cython-compile run --ensure-env --force
 ```
 
-Verification:
+Verification, from the repo build env created by `maya-cython-compile create-env`:
 
 ```powershell
-.\.conda\curvenet-build\python.exe -m ruff check src tests
-.\.conda\curvenet-build\python.exe -m mypy src tests
-.\.conda\curvenet-build\python.exe -m unittest discover -s tests
+python -m ruff check src tests
+python -m mypy src tests
+python -m unittest discover -s tests
 ```
+
+If the env is not activated, run the same commands with the `python.exe` under your configured `env_path`.
 
 Core files:
 

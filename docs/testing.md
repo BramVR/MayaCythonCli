@@ -7,15 +7,17 @@ read_when:
 
 # Testing
 
-For repo changes, prefer the repo-local interpreter path over global `python`.
+For repo changes, prefer the repo build env over a global interpreter. Activate the env created by `maya-cython-compile create-env`, then run:
 
 ## Verification commands
 
 ```powershell
-.\.conda\curvenet-build\python.exe -m ruff check src tests
-.\.conda\curvenet-build\python.exe -m mypy src tests
-.\.conda\curvenet-build\python.exe -m unittest discover -s tests
+python -m ruff check src tests
+python -m mypy src tests
+python -m unittest discover -s tests
 ```
+
+If the env is not activated, run the same commands with the `python.exe` under your configured `env_path`.
 
 ## What they cover
 

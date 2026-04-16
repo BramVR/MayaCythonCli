@@ -27,7 +27,7 @@ Each wrapper:
 
 Current interpreter fallback order:
 
-1. `.conda\curvenet-build\python.exe`
+1. `<repoRoot>\<EnvPath>\python.exe`
 2. `py -3`
 3. `python`
 
@@ -39,7 +39,7 @@ Current wrapper defaults match the script parameters, not a separate config laye
 
 - `create-conda-env.ps1`: `-EnvPath ".conda/maya-cython-build"`
 - `build-package.ps1`: `-EnvPath ".conda/maya-cython-build"` and `-MayaPy "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"`
-- `smoke-package.ps1`: `-MayaPy "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"`
-- `assemble-module.ps1`: `-ModuleName "MayaTool"` and `-MayaVersion "2025"`
+- `smoke-package.ps1`: `-EnvPath ".conda/maya-cython-build"` and `-MayaPy "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"`
+- `assemble-module.ps1`: `-EnvPath ".conda/maya-cython-build"`, `-ModuleName "MayaTool"`, and `-MayaVersion "2025"`
 
 For new behavior, change the Python CLI first, then keep the wrappers as thin delegates.

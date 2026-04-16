@@ -8,7 +8,13 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $env:PYTHONPATH = Join-Path $repoRoot "src"
 $py = Get-Command py -ErrorAction SilentlyContinue
 $python = Get-Command python -ErrorAction SilentlyContinue
-$localPython = Join-Path $repoRoot ".conda\curvenet-build\python.exe"
+$resolvedEnvPath = if ([System.IO.Path]::IsPathRooted($EnvPath)) {
+    $EnvPath
+}
+else {
+    Join-Path $repoRoot ($EnvPath -replace "/", "\")
+}
+$localPython = Join-Path $resolvedEnvPath "python.exe"
 
 if (Test-Path $localPython) {
     & $localPython -m maya_cython_compile create-env --repo-root $repoRoot --env-path $EnvPath @(
