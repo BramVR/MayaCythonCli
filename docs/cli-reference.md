@@ -26,6 +26,7 @@ Available on every command:
 
 - `--repo-root <path>`: repo root used for config and outputs
 - `--config <path>`: override local config file
+- `--version`: print the CLI version and exit
 - `--json`: emit JSON to stdout
 - `--verbose`: print subprocess commands to stderr
 - `--conda-exe <path>`: override Conda executable path
@@ -35,6 +36,7 @@ Available on every command:
 The CLI normalizes global flags so they can appear before or after the subcommand:
 
 ```powershell
+maya-cython-compile --version
 maya-cython-compile --json doctor
 maya-cython-compile doctor --json
 ```
