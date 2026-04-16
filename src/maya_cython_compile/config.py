@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_CONDA_EXE = r"C:\Users\ZO\anaconda3\condabin\conda.bat"
+DEFAULT_CONDA_EXE = str(Path.home() / "anaconda3" / "condabin" / "conda.bat")
 DEFAULT_MAYA_PY = r"C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 DEFAULT_ENV_PATH = ".conda/maya-cython-build"
 DEFAULT_CONFIG_NAME = ".maya-cython-compile.json"

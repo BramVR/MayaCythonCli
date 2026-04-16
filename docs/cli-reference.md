@@ -97,7 +97,7 @@ Supported keys:
 
 | Setting | Default |
 | --- | --- |
-| `conda_exe` | `C:\Users\ZO\anaconda3\condabin\conda.bat` |
+| `conda_exe` | `%USERPROFILE%\anaconda3\condabin\conda.bat` |
 | `env_path` | `.conda/maya-cython-build` |
 | `maya_py` | `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe` |
 
@@ -127,8 +127,26 @@ Flags that are not implemented:
 - Success, JSON mode: write a single JSON object to stdout, formatted with indentation.
 - Errors: write plain text to stderr. Errors are never JSON, even when `--json` is set.
 - Verbose subprocess tracing: write `$ <command...>` lines to stderr.
-- Interactive destructive confirmation: write the deletion summary before prompting; if the user declines, the command exits with code `2`.
-- Only `CliError` and `ValueError` are normalized into the documented stderr-plus-exit-code contract. Other uncaught exceptions use the interpreter's default traceback behavior.
+- `KeyboardInterrupt` is normalized: print `Interrupted.` to stderr and exit `130`.
+- Only `CliError`, `ValueError`, and `KeyboardInterrupt` are normalized into the documented stderr-plus-exit-code contract. Other uncaught exceptions use the interpreter's default traceback behavior.
+
+## Non-interactive Behavior
+
+- The CLI does not prompt.
+- The CLI does not read from stdin.
+- There is no `--no-input` flag because the CLI is already non-interactive by contract.
+- Commands that would delete existing outputs fail with exit code `2` unless you opt in with `--force`.
+
+## Shell Completion
+
+- Shell completion is currently unsupported and out of scope for this CLI.
+- There is no built-in completion generator or completion script in this repo today.
+
+## Signal / Ctrl-C Behavior
+
+- Interrupting the CLI stops the current operation and exits non-zero.
+- When Python handles the interrupt directly, the CLI prints `Interrupted.` to stderr and exits `130`.
+- On Windows shells, subprocess interrupts may also surface as `STATUS_CONTROL_C_EXIT` (`0xC000013A`), which is still a normal interrupted-command outcome.
 
 Human output rules:
 
@@ -140,7 +158,7 @@ Human output rules:
 
 ## Destructive Output Safety
 
-The following commands share one deletion/confirmation contract:
+The following commands share one deletion/force contract:
 
 - `create-env`
 - `build`
@@ -151,12 +169,10 @@ The following commands share one deletion/confirmation contract:
 Shared rules:
 
 - `--dry-run`: report planned deletions and subprocesses; do not modify files.
-- `--force`: skip confirmation and allow deletion.
-- Without `--force`:
-  - interactive terminal: list deletion targets and prompt for confirmation
-  - non-interactive terminal: fail with exit code `2` before deleting anything
+- `--force`: allow deletion without prompting.
+- Without `--force`: fail with exit code `2` before deleting anything.
 
-`run` performs the confirmation once for the combined pipeline cleanup plan, then executes inner steps with forced deletion enabled.
+`run` performs the deletion check once for the combined pipeline cleanup plan, then executes inner steps with forced deletion enabled.
 
 ## Command Contracts
 
@@ -289,7 +305,7 @@ None.
 | Flag | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `--dry-run` | boolean | `false` | Preview deletions and subprocess command |
-| `--force` | boolean | `false` | Skip confirmation before replacing an existing env |
+| `--force` | boolean | `false` | Allow replacing an existing env |
 
 **Inputs**
 
@@ -343,7 +359,7 @@ Dry-run JSON:
 
 **Failure modes**
 
-- Exit `2` if deletion would occur in a non-interactive session without `--force`, or if the user declines confirmation.
+- Exit `2` if deletion would occur without `--force`.
 - Exit `3` if `conda_exe` does not exist or the Conda subprocess fails.
 
 ### `build`
@@ -353,7 +369,7 @@ Dry-run JSON:
 | Flag | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `--dry-run` | boolean | `false` | Preview cleanup and build subprocess |
-| `--force` | boolean | `false` | Skip confirmation before deleting prior build artifacts |
+| `--force` | boolean | `false` | Allow deleting prior build artifacts |
 
 **Inputs**
 
@@ -424,7 +440,7 @@ Dry-run JSON:
 
 **Failure modes**
 
-- Exit `2` if deletion would occur in a non-interactive session without `--force`, or if the user declines confirmation.
+- Exit `2` if deletion would occur without `--force`.
 - Exit `3` if the env is missing or Maya runtime resolution from `mayapy` fails.
 - Exit `4` if the wheel build subprocess fails.
 
@@ -435,7 +451,7 @@ Dry-run JSON:
 | Flag | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `--dry-run` | boolean | `false` | Preview extraction cleanup and smoke subprocess |
-| `--force` | boolean | `false` | Skip confirmation before replacing previous smoke extraction |
+| `--force` | boolean | `false` | Allow replacing previous smoke extraction |
 
 **Inputs**
 
@@ -499,7 +515,7 @@ When `smoke` is previewed as part of `run --dry-run`, `wheel` may be `"after bui
 
 **Failure modes**
 
-- Exit `2` if deletion would occur in a non-interactive session without `--force`, or if the user declines confirmation.
+- Exit `2` if deletion would occur without `--force`.
 - Exit `3` if `mayapy` does not exist.
 - Exit `5` if no matching wheel exists or the smoke subprocess fails.
 
@@ -510,7 +526,7 @@ When `smoke` is previewed as part of `run --dry-run`, `wheel` may be `"after bui
 | Flag | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `--dry-run` | boolean | `false` | Preview module output replacement |
-| `--force` | boolean | `false` | Skip confirmation before replacing previous module output |
+| `--force` | boolean | `false` | Allow replacing previous module output |
 | `--module-name` | string | `build-config.json: module_name` | Override assembled module directory and `.mod` filename |
 | `--maya-version` | string | `build-config.json: maya_version` | Override `.mod` file `MAYAVERSION` token |
 
@@ -570,7 +586,7 @@ When `assemble` is previewed as part of `run --dry-run`, `wheel` may be `"after 
 
 **Failure modes**
 
-- Exit `2` if deletion would occur in a non-interactive session without `--force`, or if the user declines confirmation.
+- Exit `2` if deletion would occur without `--force`.
 - Exit `6` if no matching wheel exists or module assembly fails.
 
 ### `run`
@@ -580,7 +596,7 @@ When `assemble` is previewed as part of `run --dry-run`, `wheel` may be `"after 
 | Flag | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `--dry-run` | boolean | `false` | Preview the full pipeline |
-| `--force` | boolean | `false` | Skip the one-time destructive confirmation for the pipeline plan |
+| `--force` | boolean | `false` | Allow the pipeline plan to delete existing outputs |
 | `--ensure-env` | boolean | `false` | Run `create-env` first, but only if `env_path` is missing |
 | `--skip-smoke` | boolean | `false` | Omit the smoke step |
 | `--skip-assemble` | boolean | `false` | Omit the assemble step |
@@ -599,12 +615,12 @@ When `assemble` is previewed as part of `run --dry-run`, `wheel` may be `"after 
   - include `smoke` unless `--skip-smoke`
   - include `assemble` unless `--skip-assemble`
 - Non-dry-run order:
-  1. confirm combined deletions once
+  1. require `--force` if combined deletions would occur
   2. run `create-env` only when `--ensure-env` is set and `env_path` does not exist
   3. run `build`
   4. run `smoke` unless skipped
   5. run `assemble` unless skipped
-- Inner step executions run with forced deletion enabled because confirmation already happened at the pipeline level.
+- Inner step executions run with forced deletion enabled because the pipeline-level deletion check already happened.
 
 **Outputs**
 
@@ -667,7 +683,7 @@ Dry-run JSON:
 
 **Failure modes**
 
-- Exit `2` if the pipeline would delete outputs in a non-interactive session without `--force`, or if the user declines confirmation.
+- Exit `2` if the pipeline would delete outputs without `--force`.
 - Exit `3`, `4`, `5`, or `6` from the first failing step.
 
 ## Exit Codes
@@ -675,11 +691,12 @@ Dry-run JSON:
 | Code | Meaning |
 | --- | --- |
 | `0` | success |
-| `2` | usage error, invalid arguments, config/validation error, or destructive action refused/cancelled |
+| `2` | usage error, invalid arguments, config/validation error, or destructive action blocked until `--force` is provided |
 | `3` | dependency/setup failure |
 | `4` | build failure |
 | `5` | smoke failure |
 | `6` | assemble failure |
+| `130` | interrupted by Ctrl-C / `KeyboardInterrupt` |
 
 ## Examples
 
@@ -696,7 +713,7 @@ maya-cython-compile doctor --json
 ```
 
 ```powershell
-maya-cython-compile create-env --dry-run --conda-exe C:\Users\ZO\anaconda3\condabin\conda.bat
+maya-cython-compile create-env --dry-run --conda-exe "%USERPROFILE%\anaconda3\condabin\conda.bat"
 ```
 
 ```powershell

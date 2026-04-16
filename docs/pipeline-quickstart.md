@@ -22,7 +22,7 @@ You need:
 
 The default local paths are:
 
-- Conda: `C:\Users\ZO\anaconda3\condabin\conda.bat`
+- Conda: `%USERPROFILE%\anaconda3\condabin\conda.bat`
 - `mayapy`: `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
 - build env: `.conda/maya-cython-build`
 
@@ -77,7 +77,7 @@ From:
 
 - [../environment.yml](../environment.yml)
 
-If the env already exists, the CLI now prompts before refreshing it unless you pass `--force`.
+If the env already exists, the CLI refuses to refresh it unless you pass `--force`.
 
 ## Build the Wheel
 
@@ -95,7 +95,7 @@ What happens:
 - `setup.py bdist_wheel` runs inside the configured Conda env
 - the built wheel is written to `dist/`
 
-Use `--dry-run` first to inspect cleanup targets. Without `--force`, destructive cleanup prompts in an interactive shell and fails fast in non-interactive use.
+Use `--dry-run` first to inspect cleanup targets. Without `--force`, destructive cleanup fails fast and the CLI does not prompt.
 
 ## Run the Smoke Check
 
@@ -131,7 +131,14 @@ Expected output:
 
 Assembly skips wheel metadata directories such as `.dist-info` and `.data`.
 
-If `dist/module/<ModuleName>/` already exists, `assemble` requires confirmation or `--force` before replacing it.
+If `dist/module/<ModuleName>/` already exists, `assemble` requires `--force` before replacing it.
+
+## Non-interactive Notes
+
+- The CLI does not prompt and does not read from stdin.
+- `--no-input` is not needed because non-interactive behavior is the default contract.
+- Shell completion is not implemented in this repo today.
+- On Ctrl-C, expect a non-zero exit. Python-handled interrupts print `Interrupted.` and return `130`; some Windows shells may instead report `0xC000013A`.
 
 ## Run the Full Flow
 

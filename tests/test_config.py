@@ -50,6 +50,17 @@ def make_temp_repo(name: str) -> Path:
 
 
 class ConfigTests(unittest.TestCase):
+    def test_resolve_config_uses_home_relative_conda_default(self) -> None:
+        repo_root = make_temp_repo("config-default-conda")
+        write_build_config(repo_root)
+
+        config = resolve_config(repo_root)
+
+        self.assertEqual(
+            config.local.conda_exe,
+            Path.home() / "anaconda3" / "condabin" / "conda.bat",
+        )
+
     def test_resolve_config_uses_local_file(self) -> None:
         repo_root = make_temp_repo("config-local-file")
         write_build_config(repo_root)
