@@ -6,8 +6,7 @@ import shutil
 import sys
 import unittest
 import zipfile
-from contextlib import redirect_stderr
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 

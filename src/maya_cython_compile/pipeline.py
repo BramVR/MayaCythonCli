@@ -13,11 +13,11 @@ from .config import ResolvedConfig, as_dict
 from .errors import (
     ASSEMBLE_ERROR,
     BUILD_ERROR,
-    CliError,
     DEPENDENCY_ERROR,
     INTERRUPTED_ERROR,
     SMOKE_ERROR,
     USAGE_ERROR,
+    CliError,
 )
 from .target_builder import prepare_build_tree
 
@@ -334,14 +334,14 @@ def probe_maya_runtime(maya_py: Path) -> dict[str, str | None]:
         return {"maya_py": str(maya_py), "include_dir": None, "lib_dir": None, "lib_name": None}
 
     maya_root = maya_py.parent.parent
-    include_dir = maya_root / "Python" / "Include"
-    if not include_dir.exists():
+    include_dir: Path | None = maya_root / "Python" / "Include"
+    if include_dir is not None and not include_dir.exists():
         headers = sorted(maya_root.rglob("Python.h"))
         include_dir = headers[0].parent if headers else None
 
-    lib_dir = maya_root / "lib"
-    lib_name = None
-    if lib_dir.exists():
+    lib_dir: Path | None = maya_root / "lib"
+    lib_name: str | None = None
+    if lib_dir is not None and lib_dir.exists():
         libs = sorted(lib_dir.glob("python*.lib"))
         if libs:
             lib_name = libs[0].stem

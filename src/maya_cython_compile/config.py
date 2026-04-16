@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_CONDA_EXE = str(Path.home() / "anaconda3" / "condabin" / "conda.bat")
 DEFAULT_MAYA_PY = r"C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 DEFAULT_ENV_PATH = ".conda/maya-cython-build"

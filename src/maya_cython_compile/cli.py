@@ -4,12 +4,13 @@ import argparse
 import json
 import sys
 import tomllib
-from importlib.metadata import PackageNotFoundError, version as package_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any
 
-from .config import resolve_config
-from .errors import CliError, INTERRUPTED_ERROR, USAGE_ERROR
+from .config import ResolvedConfig, resolve_config
+from .errors import INTERRUPTED_ERROR, USAGE_ERROR, CliError
 from .pipeline import assemble, build, create_env, doctor, run_pipeline, show_config, smoke
 
 BOOL_GLOBAL_FLAGS = {"--json", "--verbose", "--version"}

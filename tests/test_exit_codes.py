@@ -16,7 +16,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from maya_cython_compile.cli import main
-from maya_cython_compile.errors import ASSEMBLE_ERROR, CliError, INTERRUPTED_ERROR, SMOKE_ERROR
+from maya_cython_compile.errors import ASSEMBLE_ERROR, INTERRUPTED_ERROR, SMOKE_ERROR, CliError
 from maya_cython_compile.pipeline import run_command
 
 

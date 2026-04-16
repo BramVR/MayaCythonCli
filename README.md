@@ -25,6 +25,14 @@ maya-cython-compile assemble --force
 maya-cython-compile run --ensure-env --force
 ```
 
+Quality checks:
+
+```powershell
+python -m ruff check src tests
+python -m mypy src tests
+python -m unittest discover -s tests
+```
+
 Core files:
 
 - [build-config.json](build-config.json)
