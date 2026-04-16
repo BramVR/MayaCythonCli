@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tomllib
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +12,7 @@ from .config import resolve_config
 from .errors import CliError, USAGE_ERROR
 from .pipeline import assemble, build, create_env, doctor, run_pipeline, show_config, smoke
 
-BOOL_GLOBAL_FLAGS = {"--json", "--verbose"}
+BOOL_GLOBAL_FLAGS = {"--json", "--verbose", "--version"}
 VALUE_GLOBAL_FLAGS = {
     "--repo-root",
     "--config",
@@ -24,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="maya-cython-compile",
         description="Build Maya-targeted Cython packages from a standard Python environment.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {get_version()}",
     )
     parser.add_argument("--repo-root", default=".", help="Repo root used for config and outputs.")
     parser.add_argument("--config", help="Optional local config file path.")
@@ -60,6 +67,19 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--maya-version", help="Override Maya version from build-config.json.")
 
     return parser
+
+
+def get_version() -> str:
+    try:
+        return package_version("maya-cython-compile")
+    except PackageNotFoundError:
+        pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        if pyproject_path.exists():
+            project = tomllib.loads(pyproject_path.read_text(encoding="utf-8")).get("project", {})
+            version = project.get("version")
+            if isinstance(version, str) and version:
+                return version
+        return "0+unknown"
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 TMP_ROOT = ROOT / "build" / "test-tmp"
+PROJECT_VERSION = "0.1.0"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
@@ -70,6 +71,16 @@ def write_fake_wheel(repo_root: Path) -> Path:
 
 
 class CliTests(unittest.TestCase):
+    def test_build_parser_version_flag(self) -> None:
+        parser = build_parser()
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout), self.assertRaises(SystemExit) as exc:
+            parser.parse_args(["--version"])
+
+        self.assertEqual(exc.exception.code, 0)
+        self.assertEqual(stdout.getvalue().strip(), f"maya-cython-compile {PROJECT_VERSION}")
+
     def test_build_parser_parses_run_command(self) -> None:
         parser = build_parser()
 
