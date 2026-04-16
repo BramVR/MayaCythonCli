@@ -5,12 +5,19 @@ import shutil
 import subprocess
 import sys
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .config import ResolvedConfig, as_dict
-from .errors import ASSEMBLE_ERROR, BUILD_ERROR, CliError, DEPENDENCY_ERROR, SMOKE_ERROR
+from .errors import ASSEMBLE_ERROR, BUILD_ERROR, CliError, DEPENDENCY_ERROR, SMOKE_ERROR, USAGE_ERROR
 from .target_builder import prepare_build_tree
+
+
+@dataclass(frozen=True, slots=True)
+class DeletionTarget:
+    path: Path
+    reason: str
 
 
 def show_config(config: ResolvedConfig) -> dict[str, Any]:
@@ -32,10 +39,19 @@ def doctor(config: ResolvedConfig) -> dict[str, Any]:
     }
 
 
-def create_env(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, Any]:
+def create_env(
+    config: ResolvedConfig,
+    *,
+    verbose: bool = False,
+    dry_run: bool = False,
+    force: bool = False,
+    confirm: Callable[[str], str] = input,
+    is_interactive: bool | None = None,
+) -> dict[str, Any]:
     if not config.local.conda_exe.exists():
         raise CliError(f"Conda was not found at {config.local.conda_exe}", DEPENDENCY_ERROR)
 
+    deletion_targets = plan_create_env_refresh(config)
     command = [
         "cmd.exe",
         "/c",
@@ -44,15 +60,39 @@ def create_env(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, An
         "create",
         "--prefix",
         str(config.local.env_path),
-        "--force",
-        "--file",
-        str(config.repo_root / "environment.yml"),
     ]
+    if deletion_targets:
+        command.append("--force")
+    command.extend(["--file", str(config.repo_root / "environment.yml")])
+
+    if dry_run:
+        return render_dry_run(
+            "create-env",
+            deletion_targets,
+            command=command,
+            details={"env_path": str(config.local.env_path)},
+        )
+
+    require_confirmation(
+        "create-env",
+        deletion_targets,
+        force=force,
+        confirm=confirm,
+        is_interactive=is_interactive,
+    )
     run_command(command, cwd=config.repo_root, verbose=verbose, error_code=DEPENDENCY_ERROR)
     return {"env_path": str(config.local.env_path)}
 
 
-def build(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, Any]:
+def build(
+    config: ResolvedConfig,
+    *,
+    verbose: bool = False,
+    dry_run: bool = False,
+    force: bool = False,
+    confirm: Callable[[str], str] = input,
+    is_interactive: bool | None = None,
+) -> dict[str, Any]:
     if not config.local.env_path.exists():
         raise CliError(
             f"Conda environment missing: {config.local.env_path}. Run create-env first.",
@@ -63,20 +103,8 @@ def build(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, Any]:
     if not maya["include_dir"] or not maya["lib_dir"] or not maya["lib_name"]:
         raise CliError(f"Could not resolve Maya Python runtime from {config.local.maya_py}", DEPENDENCY_ERROR)
 
-    clean_build_artifacts(config.repo_root)
-    build_tree = prepare_build_tree(config)
+    deletion_targets = plan_build_cleanup(config.repo_root)
     dist_dir = config.repo_root / "dist"
-    dist_dir.mkdir(parents=True, exist_ok=True)
-
-    temp_root = config.repo_root / "build" / "tmp"
-    temp_root.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["MAYA_PYTHON_INCLUDE"] = str(maya["include_dir"])
-    env["MAYA_PYTHON_LIBDIR"] = str(maya["lib_dir"])
-    env["MAYA_PYTHON_LIBNAME"] = str(maya["lib_name"])
-    env["TEMP"] = str(temp_root)
-    env["TMP"] = str(temp_root)
-
     command = [
         "cmd.exe",
         "/c",
@@ -90,28 +118,82 @@ def build(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, Any]:
         "--dist-dir",
         str(dist_dir),
     ]
+    if dry_run:
+        return render_dry_run(
+            "build",
+            deletion_targets,
+            command=command,
+            details={"dist_dir": str(dist_dir)},
+        )
+
+    require_confirmation(
+        "build",
+        deletion_targets,
+        force=force,
+        confirm=confirm,
+        is_interactive=is_interactive,
+    )
+    delete_paths(deletion_targets)
+    build_tree = prepare_build_tree(config)
+    dist_dir.mkdir(parents=True, exist_ok=True)
+
+    temp_root = config.repo_root / "build" / "tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["MAYA_PYTHON_INCLUDE"] = str(maya["include_dir"])
+    env["MAYA_PYTHON_LIBDIR"] = str(maya["lib_dir"])
+    env["MAYA_PYTHON_LIBNAME"] = str(maya["lib_name"])
+    env["TEMP"] = str(temp_root)
+    env["TMP"] = str(temp_root)
+
     run_command(command, cwd=build_tree, env=env, verbose=verbose, error_code=BUILD_ERROR)
     wheel = latest_wheel(config)
     return {"wheel": str(wheel)}
 
 
-def smoke(config: ResolvedConfig, *, verbose: bool = False) -> dict[str, Any]:
-    wheel = latest_wheel(config, error_code=SMOKE_ERROR)
+def smoke(
+    config: ResolvedConfig,
+    *,
+    verbose: bool = False,
+    dry_run: bool = False,
+    force: bool = False,
+    confirm: Callable[[str], str] = input,
+    is_interactive: bool | None = None,
+    require_wheel: bool = True,
+) -> dict[str, Any]:
+    wheel = latest_wheel(config, error_code=SMOKE_ERROR) if require_wheel else latest_wheel_optional(config)
     if not config.local.maya_py.exists():
         raise CliError(f"mayapy not found: {config.local.maya_py}", DEPENDENCY_ERROR)
 
     smoke_root = config.repo_root / "build" / "smoke"
     extract_dir = smoke_root / "wheel"
-    if extract_dir.exists():
-        shutil.rmtree(extract_dir)
+    deletion_targets = plan_smoke_cleanup(extract_dir)
+    command = [str(config.local.maya_py), "-c", smoke_script(config)]
+    details: dict[str, Any] = {
+        "extract_dir": str(extract_dir),
+        "wheel": str(wheel) if wheel else "after build step",
+    }
+    if dry_run:
+        return render_dry_run("smoke", deletion_targets, command=command, details=details)
+
+    require_confirmation(
+        "smoke",
+        deletion_targets,
+        force=force,
+        confirm=confirm,
+        is_interactive=is_interactive,
+    )
+    delete_paths(deletion_targets)
     extract_dir.mkdir(parents=True, exist_ok=True)
+
+    if wheel is None:
+        raise CliError("No built wheel found for smoke step.", SMOKE_ERROR)
 
     with zipfile.ZipFile(wheel) as archive:
         archive.extractall(extract_dir)
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(extract_dir)
-    command = [str(config.local.maya_py), "-c", smoke_script(config)]
     result = run_command(command, cwd=config.repo_root, env=env, verbose=verbose, error_code=SMOKE_ERROR)
     output = result.stdout.strip()
     return {"wheel": str(wheel), "smoke_output": output.splitlines()}
@@ -122,15 +204,38 @@ def assemble(
     *,
     module_name: str | None = None,
     maya_version: str | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+    confirm: Callable[[str], str] = input,
+    is_interactive: bool | None = None,
+    require_wheel: bool = True,
 ) -> dict[str, Any]:
-    wheel = latest_wheel(config, error_code=ASSEMBLE_ERROR)
+    wheel = latest_wheel(config, error_code=ASSEMBLE_ERROR) if require_wheel else latest_wheel_optional(config)
     resolved_module = module_name or config.build.module_name
     resolved_maya_version = maya_version or config.build.maya_version
     module_root = config.repo_root / "dist" / "module" / resolved_module
     scripts_root = module_root / "contents" / "scripts"
-    if module_root.exists():
-        shutil.rmtree(module_root)
+    deletion_targets = plan_assemble_cleanup(module_root)
+    details = {
+        "module_root": str(module_root),
+        "module_file": str(module_root / f"{resolved_module}.mod"),
+        "wheel": str(wheel) if wheel else "after build step",
+    }
+    if dry_run:
+        return render_dry_run("assemble", deletion_targets, details=details)
+
+    require_confirmation(
+        "assemble",
+        deletion_targets,
+        force=force,
+        confirm=confirm,
+        is_interactive=is_interactive,
+    )
+    delete_paths(deletion_targets)
     scripts_root.mkdir(parents=True, exist_ok=True)
+
+    if wheel is None:
+        raise CliError("No built wheel found for assemble step.", ASSEMBLE_ERROR)
 
     with zipfile.ZipFile(wheel) as archive:
         for member in archive.infolist():
@@ -156,18 +261,98 @@ def run_pipeline(
     skip_assemble: bool = False,
     module_name: str | None = None,
     maya_version: str | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+    confirm: Callable[[str], str] = input,
+    is_interactive: bool | None = None,
 ) -> dict[str, Any]:
     steps: dict[str, Any] = {}
+    if dry_run:
+        if ensure_env and not config.local.env_path.exists():
+            steps["create_env"] = create_env(
+                config,
+                verbose=verbose,
+                dry_run=True,
+                force=force,
+                confirm=confirm,
+                is_interactive=is_interactive,
+            )
+        steps["build"] = build(
+            config,
+            verbose=verbose,
+            dry_run=True,
+            force=force,
+            confirm=confirm,
+            is_interactive=is_interactive,
+        )
+        if not skip_smoke:
+            steps["smoke"] = smoke(
+                config,
+                verbose=verbose,
+                dry_run=True,
+                force=force,
+                confirm=confirm,
+                is_interactive=is_interactive,
+                require_wheel=False,
+            )
+        if not skip_assemble:
+            steps["assemble"] = assemble(
+                config,
+                module_name=module_name,
+                maya_version=maya_version,
+                dry_run=True,
+                force=force,
+                confirm=confirm,
+                is_interactive=is_interactive,
+                require_wheel=False,
+            )
+        return {"dry_run": True, "steps": steps}
+
+    pipeline_deletions = plan_pipeline_cleanup(
+        config,
+        skip_smoke=skip_smoke,
+        skip_assemble=skip_assemble,
+        module_name=module_name,
+    )
+    require_confirmation(
+        "run",
+        pipeline_deletions,
+        force=force,
+        confirm=confirm,
+        is_interactive=is_interactive,
+    )
+
     if ensure_env and not config.local.env_path.exists():
-        steps["create_env"] = create_env(config, verbose=verbose)
-    steps["build"] = build(config, verbose=verbose)
+        steps["create_env"] = create_env(
+            config,
+            verbose=verbose,
+            force=True,
+            confirm=confirm,
+            is_interactive=is_interactive,
+        )
+    steps["build"] = build(
+        config,
+        verbose=verbose,
+        force=True,
+        confirm=confirm,
+        is_interactive=is_interactive,
+    )
     if not skip_smoke:
-        steps["smoke"] = smoke(config, verbose=verbose)
+        steps["smoke"] = smoke(
+            config,
+            verbose=verbose,
+            force=True,
+            confirm=confirm,
+            is_interactive=is_interactive,
+        )
     if not skip_assemble:
         steps["assemble"] = assemble(
             config,
             module_name=module_name,
             maya_version=maya_version,
+            force=True,
+            confirm=confirm,
+            is_interactive=is_interactive,
         )
     return steps
 
@@ -199,18 +384,120 @@ def probe_maya_runtime(maya_py: Path) -> dict[str, str | None]:
     }
 
 
-def clean_build_artifacts(repo_root: Path) -> None:
+def plan_create_env_refresh(config: ResolvedConfig) -> list[DeletionTarget]:
+    if not config.local.env_path.exists():
+        return []
+    return [DeletionTarget(config.local.env_path, "replace existing Conda environment")]
+
+
+def plan_build_cleanup(repo_root: Path) -> list[DeletionTarget]:
+    deletion_targets: list[DeletionTarget] = []
     build_root = repo_root / "build"
     if build_root.exists():
         for pattern in ("lib.*", "bdist.*", "temp.*", "cython", "target-build", "tmp"):
-            for path in build_root.glob(pattern):
-                if path.is_dir():
-                    shutil.rmtree(path)
-                else:
-                    path.unlink()
-    for egg_info in repo_root.glob("*.egg-info"):
+            for path in sorted(build_root.glob(pattern)):
+                deletion_targets.append(DeletionTarget(path, f"clean build artifact matching {pattern}"))
+    for egg_info in sorted(repo_root.glob("*.egg-info")):
         if egg_info.is_dir():
-            shutil.rmtree(egg_info)
+            deletion_targets.append(DeletionTarget(egg_info, "remove stale egg-info metadata"))
+    return deletion_targets
+
+
+def plan_smoke_cleanup(extract_dir: Path) -> list[DeletionTarget]:
+    if not extract_dir.exists():
+        return []
+    return [DeletionTarget(extract_dir, "replace previous smoke extraction")]
+
+
+def plan_assemble_cleanup(module_root: Path) -> list[DeletionTarget]:
+    if not module_root.exists():
+        return []
+    return [DeletionTarget(module_root, "replace previous assembled module output")]
+
+
+def plan_pipeline_cleanup(
+    config: ResolvedConfig,
+    *,
+    skip_smoke: bool,
+    skip_assemble: bool,
+    module_name: str | None,
+) -> list[DeletionTarget]:
+    deletion_targets = plan_build_cleanup(config.repo_root)
+    if not skip_smoke:
+        deletion_targets.extend(plan_smoke_cleanup(config.repo_root / "build" / "smoke" / "wheel"))
+    if not skip_assemble:
+        resolved_module = module_name or config.build.module_name
+        deletion_targets.extend(
+            plan_assemble_cleanup(config.repo_root / "dist" / "module" / resolved_module)
+        )
+    return deletion_targets
+
+
+def delete_paths(paths: list[DeletionTarget]) -> None:
+    for target in paths:
+        if target.path.is_dir():
+            shutil.rmtree(target.path)
+        elif target.path.exists():
+            target.path.unlink()
+
+
+def require_confirmation(
+    command_name: str,
+    deletion_targets: list[DeletionTarget],
+    *,
+    force: bool,
+    confirm: Callable[[str], str],
+    is_interactive: bool | None,
+) -> None:
+    if not deletion_targets or force:
+        return
+
+    interactive = is_interactive
+    if interactive is None:
+        interactive = sys.stdin.isatty() and sys.stderr.isatty()
+
+    if not interactive:
+        raise CliError(
+            (
+                f"{command_name} would delete existing outputs. "
+                "Run with --dry-run to inspect the plan or --force to skip confirmation."
+            ),
+            USAGE_ERROR,
+        )
+
+    print(f"{command_name} will delete:", file=sys.stderr)
+    for target in deletion_targets:
+        print(f"- {target.path} ({target.reason})", file=sys.stderr)
+    answer = confirm("Continue? [y/N]: ").strip().lower()
+    if answer in {"y", "yes"}:
+        return
+    raise CliError(f"{command_name} cancelled.", USAGE_ERROR)
+
+
+def render_dry_run(
+    command_name: str,
+    deletion_targets: list[DeletionTarget],
+    *,
+    command: list[str] | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "dry_run": True,
+        "command": command_name,
+        "delete": [{"path": str(target.path), "reason": target.reason} for target in deletion_targets],
+    }
+    if command is not None:
+        payload["would_run"] = command
+    if details:
+        payload.update(details)
+    return payload
+
+
+def latest_wheel_optional(config: ResolvedConfig) -> Path | None:
+    try:
+        return latest_wheel(config)
+    except CliError:
+        return None
 
 
 def latest_wheel(config: ResolvedConfig, *, error_code: int = BUILD_ERROR) -> Path:

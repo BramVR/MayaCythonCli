@@ -47,15 +47,25 @@ def build_parser() -> argparse.ArgumentParser:
     config_subparsers.add_parser("show", help="Show resolved config.")
 
     subparsers.add_parser("doctor", help="Check local toolchain paths and Maya runtime discovery.")
-    subparsers.add_parser("create-env", help="Create or refresh the local Conda build environment.")
-    subparsers.add_parser("build", help="Build the configured Maya wheel.")
-    subparsers.add_parser("smoke", help="Run the configured smoke import under mayapy.")
+    create_env_parser = subparsers.add_parser(
+        "create-env",
+        help="Create the local Conda build environment, or refresh it with confirmation.",
+    )
+    add_safety_flags(create_env_parser)
+
+    build_command_parser = subparsers.add_parser("build", help="Build the configured Maya wheel.")
+    add_safety_flags(build_command_parser)
+
+    smoke_parser = subparsers.add_parser("smoke", help="Run the configured smoke import under mayapy.")
+    add_safety_flags(smoke_parser)
 
     assemble_parser = subparsers.add_parser("assemble", help="Assemble the Maya module layout.")
+    add_safety_flags(assemble_parser)
     assemble_parser.add_argument("--module-name", help="Override module name from build-config.json.")
     assemble_parser.add_argument("--maya-version", help="Override Maya version from build-config.json.")
 
     run_parser = subparsers.add_parser("run", help="Run the full pipeline.")
+    add_safety_flags(run_parser)
     run_parser.add_argument(
         "--ensure-env",
         action="store_true",
@@ -67,6 +77,19 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--maya-version", help="Override Maya version from build-config.json.")
 
     return parser
+
+
+def add_safety_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show planned deletions and subprocesses without changing files.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip confirmation and allow deleting existing outputs.",
+    )
 
 
 def get_version() -> str:
@@ -115,16 +138,33 @@ def dispatch(args: argparse.Namespace, config: ResolvedConfig) -> dict[str, Any]
     if args.command == "doctor":
         return doctor(config)
     if args.command == "create-env":
-        return create_env(config, verbose=bool(args.verbose))
+        return create_env(
+            config,
+            verbose=bool(args.verbose),
+            dry_run=bool(args.dry_run),
+            force=bool(args.force),
+        )
     if args.command == "build":
-        return build(config, verbose=bool(args.verbose))
+        return build(
+            config,
+            verbose=bool(args.verbose),
+            dry_run=bool(args.dry_run),
+            force=bool(args.force),
+        )
     if args.command == "smoke":
-        return smoke(config, verbose=bool(args.verbose))
+        return smoke(
+            config,
+            verbose=bool(args.verbose),
+            dry_run=bool(args.dry_run),
+            force=bool(args.force),
+        )
     if args.command == "assemble":
         return assemble(
             config,
             module_name=args.module_name,
             maya_version=args.maya_version,
+            dry_run=bool(args.dry_run),
+            force=bool(args.force),
         )
     if args.command == "run":
         return run_pipeline(
@@ -135,6 +175,8 @@ def dispatch(args: argparse.Namespace, config: ResolvedConfig) -> dict[str, Any]
             skip_assemble=bool(args.skip_assemble),
             module_name=args.module_name,
             maya_version=args.maya_version,
+            dry_run=bool(args.dry_run),
+            force=bool(args.force),
         )
     raise ValueError(f"Unsupported command: {args.command}")
 
@@ -184,6 +226,9 @@ def emit(payload: dict[str, Any], *, as_json: bool) -> None:
 
 def render_text(payload: dict[str, Any]) -> list[str]:
     lines: list[str] = []
+    if payload.get("dry_run"):
+        return render_dry_run_text(payload)
+
     if "checks" in payload:
         lines.append("Doctor")
         for key, value in payload["checks"].items():
@@ -200,5 +245,37 @@ def render_text(payload: dict[str, Any]) -> list[str]:
         return lines
 
     for key, value in payload.items():
+        lines.append(f"{key}: {value}")
+    return lines
+
+
+def render_dry_run_text(payload: dict[str, Any]) -> list[str]:
+    lines = ["Dry run"]
+    if "steps" in payload:
+        for step_name, step_payload in payload["steps"].items():
+            lines.append(f"[{step_name}]")
+            lines.extend(render_dry_run_section(step_payload))
+        return lines
+    return lines + render_dry_run_section(payload)
+
+
+def render_dry_run_section(payload: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    if "command" in payload:
+        lines.append(f"command: {payload['command']}")
+
+    deletions = payload.get("delete", [])
+    if deletions:
+        for item in deletions:
+            lines.append(f"delete: {item['path']} ({item['reason']})")
+    else:
+        lines.append("delete: none")
+
+    if "would_run" in payload:
+        lines.append(f"would_run: {' '.join(payload['would_run'])}")
+
+    for key, value in payload.items():
+        if key in {"dry_run", "command", "delete", "would_run"}:
+            continue
         lines.append(f"{key}: {value}")
     return lines

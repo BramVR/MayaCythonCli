@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 from .config import ResolvedConfig
@@ -9,8 +8,6 @@ from .config import ResolvedConfig
 
 def prepare_build_tree(config: ResolvedConfig) -> Path:
     build_root = config.repo_root / "build" / "target-build"
-    if build_root.exists():
-        shutil.rmtree(build_root)
 
     package_source = config.repo_root / config.build.package_dir
     package_target = build_root / config.build.package_dir

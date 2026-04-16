@@ -1,6 +1,8 @@
 param(
     [string]$ModuleName = "MayaTool",
-    [string]$MayaVersion = "2025"
+    [string]$MayaVersion = "2025",
+    [switch]$DryRun,
+    [switch]$Force
 )
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -9,14 +11,23 @@ $py = Get-Command py -ErrorAction SilentlyContinue
 $python = Get-Command python -ErrorAction SilentlyContinue
 $localPython = Join-Path $repoRoot ".conda\curvenet-build\python.exe"
 
-if ($py) {
-    & $py.Source -3 -m maya_cython_compile assemble --repo-root $repoRoot --module-name $ModuleName --maya-version $MayaVersion
+if (Test-Path $localPython) {
+    & $localPython -m maya_cython_compile assemble --repo-root $repoRoot --module-name $ModuleName --maya-version $MayaVersion @(
+        if ($DryRun) { "--dry-run" }
+        if ($Force) { "--force" }
+    )
+}
+elseif ($py) {
+    & $py.Source -3 -m maya_cython_compile assemble --repo-root $repoRoot --module-name $ModuleName --maya-version $MayaVersion @(
+        if ($DryRun) { "--dry-run" }
+        if ($Force) { "--force" }
+    )
 }
 elseif ($python) {
-    & $python.Source -m maya_cython_compile assemble --repo-root $repoRoot --module-name $ModuleName --maya-version $MayaVersion
-}
-elseif (Test-Path $localPython) {
-    & $localPython -m maya_cython_compile assemble --repo-root $repoRoot --module-name $ModuleName --maya-version $MayaVersion
+    & $python.Source -m maya_cython_compile assemble --repo-root $repoRoot --module-name $ModuleName --maya-version $MayaVersion @(
+        if ($DryRun) { "--dry-run" }
+        if ($Force) { "--force" }
+    )
 }
 else {
     throw "No Python interpreter found for CLI wrapper."

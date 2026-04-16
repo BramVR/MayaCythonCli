@@ -16,11 +16,13 @@ Short version:
 ```powershell
 pip install -e .
 maya-cython-compile doctor
-maya-cython-compile create-env
-maya-cython-compile build
-maya-cython-compile smoke
-maya-cython-compile assemble
-maya-cython-compile run --ensure-env
+maya-cython-compile create-env --dry-run
+maya-cython-compile create-env --force
+maya-cython-compile build --dry-run
+maya-cython-compile build --force
+maya-cython-compile smoke --force
+maya-cython-compile assemble --force
+maya-cython-compile run --ensure-env --force
 ```
 
 Core files:

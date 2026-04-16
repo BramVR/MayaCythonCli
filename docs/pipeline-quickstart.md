@@ -63,7 +63,8 @@ maya-cython-compile doctor --json
 ## Create the Conda Env
 
 ```powershell
-maya-cython-compile create-env
+maya-cython-compile create-env --dry-run
+maya-cython-compile create-env --force
 ```
 
 This creates or refreshes:
@@ -74,25 +75,31 @@ From:
 
 - [../environment.yml](../environment.yml)
 
+If the env already exists, the CLI now prompts before refreshing it unless you pass `--force`.
+
 ## Build the Wheel
 
 ```powershell
-maya-cython-compile build
+maya-cython-compile build --dry-run
+maya-cython-compile build --force
 ```
 
 What happens:
 
 - the CLI validates the Conda env exists
 - the Maya Python include and lib paths are discovered from `mayapy`
-- old build artifacts under `build/` are cleaned
+- old build artifacts under `build/` and stale `*.egg-info/` may be removed
 - a temporary build tree is written under `build/target-build/`
 - `setup.py bdist_wheel` runs inside the configured Conda env
 - the built wheel is written to `dist/`
 
+Use `--dry-run` first to inspect cleanup targets. Without `--force`, destructive cleanup prompts in an interactive shell and fails fast in non-interactive use.
+
 ## Run the Smoke Check
 
 ```powershell
-maya-cython-compile smoke
+maya-cython-compile smoke --dry-run
+maya-cython-compile smoke --force
 ```
 
 What it validates:
@@ -106,10 +113,13 @@ The wheel is unpacked under:
 
 - `build/smoke/wheel/`
 
+If that unpack directory already exists, `smoke` treats it as a destructive replace and uses the same `--dry-run` / `--force` contract.
+
 ## Assemble the Maya Module
 
 ```powershell
-maya-cython-compile assemble
+maya-cython-compile assemble --dry-run
+maya-cython-compile assemble --force
 ```
 
 Expected output:
@@ -119,10 +129,13 @@ Expected output:
 
 Assembly skips wheel metadata directories such as `.dist-info` and `.data`.
 
+If `dist/module/<ModuleName>/` already exists, `assemble` requires confirmation or `--force` before replacing it.
+
 ## Run the Full Flow
 
 ```powershell
-maya-cython-compile run --ensure-env
+maya-cython-compile run --dry-run
+maya-cython-compile run --ensure-env --force
 ```
 
 Useful variants:
@@ -130,7 +143,7 @@ Useful variants:
 ```powershell
 maya-cython-compile run --skip-smoke
 maya-cython-compile run --skip-assemble
-maya-cython-compile run --module-name StudioTool --maya-version 2025
+maya-cython-compile run --force --module-name StudioTool --maya-version 2025
 ```
 
 ## Current Scaffold
