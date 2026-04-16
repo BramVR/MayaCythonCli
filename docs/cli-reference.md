@@ -33,6 +33,9 @@ Available on every command:
 - `--env-path <path>`: override local Conda env path
 - `--maya-py <path>`: override `mayapy` path
 
+Supported output modes are the default human-readable text output and `--json`.
+The CLI does not support `--plain` or `--quiet`.
+
 The CLI normalizes global flags so they can appear before or after the subcommand:
 
 ```powershell
@@ -170,7 +173,7 @@ Order of operations:
 
 ## Output Contract
 
-Human mode prints simple text lines to stdout.
+Default mode prints simple human-readable text lines to stdout.
 
 JSON mode prints a structured payload to stdout:
 
@@ -178,6 +181,10 @@ JSON mode prints a structured payload to stdout:
 maya-cython-compile doctor --json
 maya-cython-compile config show --json
 ```
+
+`--json` is the only alternate output mode.
+`--plain` and `--quiet` are not supported.
+`--verbose` does not change stdout formatting; it only prints subprocess commands to stderr.
 
 Errors are printed to stderr and the process exits with one of these codes:
 
