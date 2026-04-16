@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
 import json
 import shutil
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -13,7 +16,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from maya_cython_compile.cli import main
-from maya_cython_compile.errors import ASSEMBLE_ERROR, SMOKE_ERROR
+from maya_cython_compile.errors import ASSEMBLE_ERROR, CliError, INTERRUPTED_ERROR, SMOKE_ERROR
+from maya_cython_compile.pipeline import run_command
 
 
 def write_build_config(repo_root: Path) -> None:
@@ -78,3 +82,55 @@ class ExitCodeTests(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, ASSEMBLE_ERROR)
+
+    def test_main_returns_interrupted_exit_code_on_keyboard_interrupt(self) -> None:
+        repo_root = make_temp_repo("cli-keyboard-interrupt")
+        write_build_config(repo_root)
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), mock.patch("maya_cython_compile.cli.dispatch", side_effect=KeyboardInterrupt):
+            exit_code = main(
+                [
+                    "--repo-root",
+                    str(repo_root),
+                    "config",
+                    "show",
+                ]
+            )
+
+        self.assertEqual(exit_code, INTERRUPTED_ERROR)
+        self.assertEqual(stderr.getvalue().strip(), "Interrupted.")
+
+    def test_run_command_verbose_uses_stderr_without_crashing(self) -> None:
+        repo_root = make_temp_repo("cli-verbose-run-command")
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr):
+            result = run_command(
+                ["cmd.exe", "/c", "echo", "hello"],
+                cwd=repo_root,
+                verbose=True,
+                error_code=SMOKE_ERROR,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("$ cmd.exe /c echo hello", stderr.getvalue())
+
+    def test_run_command_maps_interrupted_subprocess_to_interrupt_exit_code(self) -> None:
+        repo_root = make_temp_repo("cli-interrupted-subprocess")
+
+        class FakeCompletedProcess:
+            def __init__(self, returncode: int) -> None:
+                self.returncode = returncode
+                self.stdout = ""
+                self.stderr = ""
+
+        with mock.patch(
+            "maya_cython_compile.pipeline.subprocess.run",
+            return_value=FakeCompletedProcess(0xC000013A),
+        ):
+            with self.assertRaises(CliError) as exc:
+                run_command(["cmd.exe", "/c", "timeout", "/t", "10"], cwd=repo_root, error_code=SMOKE_ERROR)
+
+        self.assertEqual(exc.exception.exit_code, INTERRUPTED_ERROR)
+        self.assertEqual(str(exc.exception), "Interrupted.")

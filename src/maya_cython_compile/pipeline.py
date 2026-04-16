@@ -7,10 +7,18 @@ import sys
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .config import ResolvedConfig, as_dict
-from .errors import ASSEMBLE_ERROR, BUILD_ERROR, CliError, DEPENDENCY_ERROR, SMOKE_ERROR, USAGE_ERROR
+from .errors import (
+    ASSEMBLE_ERROR,
+    BUILD_ERROR,
+    CliError,
+    DEPENDENCY_ERROR,
+    INTERRUPTED_ERROR,
+    SMOKE_ERROR,
+    USAGE_ERROR,
+)
 from .target_builder import prepare_build_tree
 
 
@@ -45,8 +53,6 @@ def create_env(
     verbose: bool = False,
     dry_run: bool = False,
     force: bool = False,
-    confirm: Callable[[str], str] = input,
-    is_interactive: bool | None = None,
 ) -> dict[str, Any]:
     if not config.local.conda_exe.exists():
         raise CliError(f"Conda was not found at {config.local.conda_exe}", DEPENDENCY_ERROR)
@@ -77,8 +83,6 @@ def create_env(
         "create-env",
         deletion_targets,
         force=force,
-        confirm=confirm,
-        is_interactive=is_interactive,
     )
     run_command(command, cwd=config.repo_root, verbose=verbose, error_code=DEPENDENCY_ERROR)
     return {"env_path": str(config.local.env_path)}
@@ -90,8 +94,6 @@ def build(
     verbose: bool = False,
     dry_run: bool = False,
     force: bool = False,
-    confirm: Callable[[str], str] = input,
-    is_interactive: bool | None = None,
 ) -> dict[str, Any]:
     if not config.local.env_path.exists():
         raise CliError(
@@ -130,8 +132,6 @@ def build(
         "build",
         deletion_targets,
         force=force,
-        confirm=confirm,
-        is_interactive=is_interactive,
     )
     delete_paths(deletion_targets)
     build_tree = prepare_build_tree(config)
@@ -157,8 +157,6 @@ def smoke(
     verbose: bool = False,
     dry_run: bool = False,
     force: bool = False,
-    confirm: Callable[[str], str] = input,
-    is_interactive: bool | None = None,
     require_wheel: bool = True,
 ) -> dict[str, Any]:
     wheel = latest_wheel(config, error_code=SMOKE_ERROR) if require_wheel else latest_wheel_optional(config)
@@ -180,8 +178,6 @@ def smoke(
         "smoke",
         deletion_targets,
         force=force,
-        confirm=confirm,
-        is_interactive=is_interactive,
     )
     delete_paths(deletion_targets)
     extract_dir.mkdir(parents=True, exist_ok=True)
@@ -206,8 +202,6 @@ def assemble(
     maya_version: str | None = None,
     dry_run: bool = False,
     force: bool = False,
-    confirm: Callable[[str], str] = input,
-    is_interactive: bool | None = None,
     require_wheel: bool = True,
 ) -> dict[str, Any]:
     wheel = latest_wheel(config, error_code=ASSEMBLE_ERROR) if require_wheel else latest_wheel_optional(config)
@@ -228,8 +222,6 @@ def assemble(
         "assemble",
         deletion_targets,
         force=force,
-        confirm=confirm,
-        is_interactive=is_interactive,
     )
     delete_paths(deletion_targets)
     scripts_root.mkdir(parents=True, exist_ok=True)
@@ -263,8 +255,6 @@ def run_pipeline(
     maya_version: str | None = None,
     dry_run: bool = False,
     force: bool = False,
-    confirm: Callable[[str], str] = input,
-    is_interactive: bool | None = None,
 ) -> dict[str, Any]:
     steps: dict[str, Any] = {}
     if dry_run:
@@ -274,16 +264,12 @@ def run_pipeline(
                 verbose=verbose,
                 dry_run=True,
                 force=force,
-                confirm=confirm,
-                is_interactive=is_interactive,
             )
         steps["build"] = build(
             config,
             verbose=verbose,
             dry_run=True,
             force=force,
-            confirm=confirm,
-            is_interactive=is_interactive,
         )
         if not skip_smoke:
             steps["smoke"] = smoke(
@@ -291,8 +277,6 @@ def run_pipeline(
                 verbose=verbose,
                 dry_run=True,
                 force=force,
-                confirm=confirm,
-                is_interactive=is_interactive,
                 require_wheel=False,
             )
         if not skip_assemble:
@@ -302,8 +286,6 @@ def run_pipeline(
                 maya_version=maya_version,
                 dry_run=True,
                 force=force,
-                confirm=confirm,
-                is_interactive=is_interactive,
                 require_wheel=False,
             )
         return {"dry_run": True, "steps": steps}
@@ -318,8 +300,6 @@ def run_pipeline(
         "run",
         pipeline_deletions,
         force=force,
-        confirm=confirm,
-        is_interactive=is_interactive,
     )
 
     if ensure_env and not config.local.env_path.exists():
@@ -327,23 +307,17 @@ def run_pipeline(
             config,
             verbose=verbose,
             force=True,
-            confirm=confirm,
-            is_interactive=is_interactive,
         )
     steps["build"] = build(
         config,
         verbose=verbose,
         force=True,
-        confirm=confirm,
-        is_interactive=is_interactive,
     )
     if not skip_smoke:
         steps["smoke"] = smoke(
             config,
             verbose=verbose,
             force=True,
-            confirm=confirm,
-            is_interactive=is_interactive,
         )
     if not skip_assemble:
         steps["assemble"] = assemble(
@@ -351,8 +325,6 @@ def run_pipeline(
             module_name=module_name,
             maya_version=maya_version,
             force=True,
-            confirm=confirm,
-            is_interactive=is_interactive,
         )
     return steps
 
@@ -446,32 +418,17 @@ def require_confirmation(
     deletion_targets: list[DeletionTarget],
     *,
     force: bool,
-    confirm: Callable[[str], str],
-    is_interactive: bool | None,
 ) -> None:
     if not deletion_targets or force:
         return
 
-    interactive = is_interactive
-    if interactive is None:
-        interactive = sys.stdin.isatty() and sys.stderr.isatty()
-
-    if not interactive:
-        raise CliError(
-            (
-                f"{command_name} would delete existing outputs. "
-                "Run with --dry-run to inspect the plan or --force to skip confirmation."
-            ),
-            USAGE_ERROR,
-        )
-
-    print(f"{command_name} will delete:", file=sys.stderr)
-    for target in deletion_targets:
-        print(f"- {target.path} ({target.reason})", file=sys.stderr)
-    answer = confirm("Continue? [y/N]: ").strip().lower()
-    if answer in {"y", "yes"}:
-        return
-    raise CliError(f"{command_name} cancelled.", USAGE_ERROR)
+    raise CliError(
+        (
+            f"{command_name} would delete existing outputs. "
+            "Run with --dry-run to inspect the plan, then re-run with --force to allow deletion."
+        ),
+        USAGE_ERROR,
+    )
 
 
 def render_dry_run(
@@ -564,7 +521,18 @@ def run_command(
         text=True,
         check=False,
     )
+    if is_interrupt_returncode(result.returncode):
+        raise CliError("Interrupted.", INTERRUPTED_ERROR)
     if result.returncode != 0:
         message = result.stderr.strip() or result.stdout.strip() or "Command failed."
         raise CliError(message, error_code)
     return result
+
+
+def is_interrupt_returncode(returncode: int) -> bool:
+    return returncode in {
+        130,
+        -2,
+        -1073741510,
+        0xC000013A,
+    }

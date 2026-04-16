@@ -145,8 +145,8 @@ Flags that are not implemented:
 ## Signal / Ctrl-C Behavior
 
 - Interrupting the CLI stops the current operation and exits non-zero.
-- When Python handles the interrupt directly, the CLI prints `Interrupted.` to stderr and exits `130`.
-- On Windows shells, subprocess interrupts may also surface as `STATUS_CONTROL_C_EXIT` (`0xC000013A`), which is still a normal interrupted-command outcome.
+- Direct `KeyboardInterrupt` handling prints `Interrupted.` to stderr and exits `130`.
+- Interrupted subprocesses are also normalized to `Interrupted.` with exit `130`, including Windows `STATUS_CONTROL_C_EXIT` (`0xC000013A`) return codes.
 
 Human output rules:
 
@@ -360,6 +360,7 @@ Dry-run JSON:
 **Failure modes**
 
 - Exit `2` if deletion would occur without `--force`.
+- Exit `130` if the command is interrupted with Ctrl-C.
 - Exit `3` if `conda_exe` does not exist or the Conda subprocess fails.
 
 ### `build`
@@ -441,6 +442,7 @@ Dry-run JSON:
 **Failure modes**
 
 - Exit `2` if deletion would occur without `--force`.
+- Exit `130` if the command is interrupted with Ctrl-C.
 - Exit `3` if the env is missing or Maya runtime resolution from `mayapy` fails.
 - Exit `4` if the wheel build subprocess fails.
 
@@ -517,6 +519,7 @@ When `smoke` is previewed as part of `run --dry-run`, `wheel` may be `"after bui
 
 - Exit `2` if deletion would occur without `--force`.
 - Exit `3` if `mayapy` does not exist.
+- Exit `130` if the command is interrupted with Ctrl-C.
 - Exit `5` if no matching wheel exists or the smoke subprocess fails.
 
 ### `assemble`
@@ -587,6 +590,7 @@ When `assemble` is previewed as part of `run --dry-run`, `wheel` may be `"after 
 **Failure modes**
 
 - Exit `2` if deletion would occur without `--force`.
+- Exit `130` if the command is interrupted with Ctrl-C.
 - Exit `6` if no matching wheel exists or module assembly fails.
 
 ### `run`
@@ -684,6 +688,7 @@ Dry-run JSON:
 **Failure modes**
 
 - Exit `2` if the pipeline would delete outputs without `--force`.
+- Exit `130` if the pipeline is interrupted with Ctrl-C.
 - Exit `3`, `4`, `5`, or `6` from the first failing step.
 
 ## Exit Codes

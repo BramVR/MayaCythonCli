@@ -6,6 +6,7 @@ import shutil
 import sys
 import unittest
 import zipfile
+from contextlib import redirect_stderr
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -219,18 +220,16 @@ class CliTests(unittest.TestCase):
         self.assertIn(str(repo_root / "build" / "tmp"), deleted_paths)
         self.assertIn(str(repo_root / "maya_tool.egg-info"), deleted_paths)
 
-    def test_main_build_requires_force_when_cleanup_targets_exist_noninteractive(self) -> None:
+    def test_main_build_requires_force_without_prompt_when_cleanup_targets_exist(self) -> None:
         repo_root = make_temp_repo("cli-build-needs-force")
         write_build_config(repo_root)
         env_path = repo_root / ".conda" / "maya-cython-build"
         env_path.mkdir(parents=True, exist_ok=True)
         mayapy = write_fake_maya_runtime(repo_root)
         (repo_root / "build" / "target-build").mkdir(parents=True, exist_ok=True)
+        stderr = io.StringIO()
 
-        with mock.patch("maya_cython_compile.pipeline.sys.stdin.isatty", return_value=False), mock.patch(
-            "maya_cython_compile.pipeline.sys.stderr.isatty",
-            return_value=False,
-        ):
+        with redirect_stderr(stderr), mock.patch("builtins.input", side_effect=AssertionError("stdin not allowed")):
             exit_code = main(
                 [
                     "--repo-root",
@@ -244,3 +243,4 @@ class CliTests(unittest.TestCase):
             )
 
         self.assertEqual(exit_code, USAGE_ERROR)
+        self.assertIn("Run with --dry-run to inspect the plan", stderr.getvalue())

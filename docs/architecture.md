@@ -57,7 +57,7 @@ That module is responsible for:
 - validating Conda and `mayapy`
 - discovering Maya headers and import libs
 - creating the build env
-- planning destructive cleanup and enforcing the shared `--dry-run` / `--force` / confirmation contract
+- planning destructive cleanup and enforcing the shared `--dry-run` / `--force` contract
 - preparing the temporary target build tree
 - building the wheel
 - validating the wheel under `mayapy`

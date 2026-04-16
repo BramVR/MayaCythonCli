@@ -138,7 +138,8 @@ If `dist/module/<ModuleName>/` already exists, `assemble` requires `--force` bef
 - The CLI does not prompt and does not read from stdin.
 - `--no-input` is not needed because non-interactive behavior is the default contract.
 - Shell completion is not implemented in this repo today.
-- On Ctrl-C, expect a non-zero exit. Python-handled interrupts print `Interrupted.` and return `130`; some Windows shells may instead report `0xC000013A`.
+- On Ctrl-C, expect `Interrupted.` on stderr and exit code `130`.
+- Interrupted subprocesses are normalized to the same `130` exit on Windows, including `0xC000013A`.
 
 ## Run the Full Flow
 

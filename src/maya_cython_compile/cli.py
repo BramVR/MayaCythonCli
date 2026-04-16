@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import resolve_config
-from .errors import CliError, USAGE_ERROR
+from .errors import CliError, INTERRUPTED_ERROR, USAGE_ERROR
 from .pipeline import assemble, build, create_env, doctor, run_pipeline, show_config, smoke
 
 BOOL_GLOBAL_FLAGS = {"--json", "--verbose", "--version"}
@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("doctor", help="Check local toolchain paths and Maya runtime discovery.")
     create_env_parser = subparsers.add_parser(
         "create-env",
-        help="Create the local Conda build environment, or refresh it with confirmation.",
+        help="Create the local Conda build environment, or refresh it when --force allows replacement.",
     )
     add_safety_flags(create_env_parser)
 
@@ -88,7 +88,7 @@ def add_safety_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Skip confirmation and allow deleting existing outputs.",
+        help="Allow deleting existing outputs without prompting.",
     )
 
 
@@ -125,6 +125,9 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return USAGE_ERROR
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        return INTERRUPTED_ERROR
 
     emit(payload, as_json=bool(args.json))
     return 0
