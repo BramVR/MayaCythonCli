@@ -194,6 +194,13 @@ Supported environment variables:
 - `MAYA_CYTHON_COMPILE_ENV_PATH`
 - `MAYA_CYTHON_COMPILE_MAYA_PY`
 
+Operator notes:
+
+- Relative `--env-path` and `--maya-py` values resolve from `--repo-root`.
+- `assemble` and `smoke` require a wheel whose name matches `distribution_name` from `build-config.json`.
+- In shells where `py` or `python` is unavailable, run the CLI with the repo env interpreter directly, for example `.conda/<env>/python.exe -m maya_cython_compile`.
+- PowerShell `Compress-Archive` writes `.zip`, not `.whl`.
+
 ## Compatibility Wrappers
 
 These scripts still exist and delegate into the CLI:
