@@ -15,7 +15,7 @@ Current defaults:
 - platform: Windows
 - Maya version: 2025
 - target package: `src/maya_tool`
-- local config file: `.maya-cython-compile.json`
+- local config file: `<repo-root>/.maya-cython-compile.json`
 
 Core tracked inputs:
 

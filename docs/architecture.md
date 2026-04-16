@@ -46,6 +46,8 @@ Local machine-specific paths are resolved separately through:
 
 That split keeps repo configuration portable while still letting each machine override local tools and paths.
 
+The local config layer is intentionally repo-scoped: the default file is `<repo-root>/.maya-cython-compile.json`, unless `--config` points to a different file. There is no user-level or system-level config discovery in the current implementation.
+
 ## Pipeline Ownership
 
 The CLI owns the real pipeline logic in [../src/maya_cython_compile/pipeline.py](../src/maya_cython_compile/pipeline.py).

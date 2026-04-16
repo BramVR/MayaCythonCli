@@ -26,7 +26,9 @@ The default local paths are:
 - `mayapy`: `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
 - build env: `.conda/maya-cython-build`
 
-Override them with CLI flags, environment variables, or `.maya-cython-compile.json`.
+Override them with CLI flags, environment variables, or `<repo-root>/.maya-cython-compile.json`.
+
+That config file is intentionally repo-scoped. The CLI does not search home-directory, XDG, `%APPDATA%`, or system-level config locations.
 
 ## One-Time Setup
 

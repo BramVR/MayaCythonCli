@@ -45,6 +45,14 @@ The CLI resolves configuration in this precedence order:
 3. Local config file
 4. Built-in defaults
 
+### Repo-scoped config only
+
+The local config layer is intentionally repo-scoped.
+
+By default, the CLI reads exactly `<repo-root>/.maya-cython-compile.json`. If `--config PATH` is provided, the CLI reads that exact file instead.
+
+There is currently no user-level or system-level config discovery. The CLI does not search XDG locations, home-directory dotfiles, `%APPDATA%`, or system config paths.
+
 ### Required repo input
 
 `<repo-root>/build-config.json` must exist and contain:
@@ -66,6 +74,8 @@ The CLI resolves configuration in this precedence order:
 ### Local config file
 
 Default local config path: `<repo-root>/.maya-cython-compile.json`
+
+Unless `--config` is provided, this is the only config file location the CLI will read.
 
 Supported keys:
 
