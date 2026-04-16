@@ -4,7 +4,6 @@ import os
 import shutil
 import subprocess
 import sys
-import textwrap
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -228,37 +227,35 @@ def latest_wheel(config: ResolvedConfig) -> Path:
 
 
 def smoke_script(config: ResolvedConfig) -> str:
-    imports = "\n".join(
-        f"importlib.import_module('{config.build.package_name}.{module_name}')"
-        for module_name in config.build.smoke.compiled_modules
-    )
-    callable_block = ""
+    lines = [
+        "import importlib",
+        "from importlib import resources",
+        "",
+        f"importlib.import_module({config.build.package_name!r})",
+    ]
+    for module_name in config.build.smoke.compiled_modules:
+        lines.append(f"importlib.import_module({f'{config.build.package_name}.{module_name}'!r})")
     if config.build.smoke.callable:
-        callable_block = textwrap.dedent(
-            f"""
-            package = importlib.import_module('{config.build.package_name}')
-            print(getattr(package, '{config.build.smoke.callable}')())
-            """
+        lines.extend(
+            [
+                "",
+                f"package = importlib.import_module({config.build.package_name!r})",
+                f"print(getattr(package, {config.build.smoke.callable!r})())",
+            ]
         )
-    resource_block = ""
     if config.build.smoke.resource_check:
-        resource_block = textwrap.dedent(
-            f"""
-            package_files = resources.files('{config.build.package_name}')
-            print(package_files.joinpath('{config.build.smoke.resource_check}').is_file())
-            """
+        lines.extend(
+            [
+                "",
+                f"package_files = resources.files({config.build.package_name!r})",
+                (
+                    "print("
+                    f"package_files.joinpath({config.build.smoke.resource_check!r}).is_file()"
+                    ")"
+                ),
+            ]
         )
-    return textwrap.dedent(
-        f"""
-        import importlib
-        from importlib import resources
-
-        importlib.import_module('{config.build.package_name}')
-        {imports}
-        {callable_block}
-        {resource_block}
-        """
-    ).strip()
+    return "\n".join(lines)
 
 
 def run_command(

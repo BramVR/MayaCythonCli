@@ -5,6 +5,7 @@ import json
 import shutil
 import sys
 import unittest
+import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -49,6 +50,25 @@ def make_temp_repo(name: str) -> Path:
     return repo_root
 
 
+def write_fake_wheel(repo_root: Path) -> Path:
+    dist_dir = repo_root / "dist"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    wheel_path = dist_dir / "maya_tool-0.1.0-py3-none-any.whl"
+    package_root = SRC / "maya_tool"
+
+    with zipfile.ZipFile(wheel_path, "w") as archive:
+        for name in (
+            "__init__.py",
+            "bootstrap.py",
+            "_cy_logic.py",
+            "_resources.py",
+            "tool_manifest.json",
+        ):
+            archive.write(package_root / name, arcname=f"maya_tool/{name}")
+
+    return wheel_path
+
+
 class CliTests(unittest.TestCase):
     def test_build_parser_parses_run_command(self) -> None:
         parser = build_parser()
@@ -81,3 +101,26 @@ class CliTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["config"]["package_name"], "maya_tool")
         self.assertEqual(payload["config"]["module_name"], "MayaTool")
+
+    def test_main_smoke_json_with_fake_wheel(self) -> None:
+        repo_root = make_temp_repo("cli-smoke")
+        write_build_config(repo_root)
+        write_fake_wheel(repo_root)
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            exit_code = main(
+                [
+                    "--repo-root",
+                    str(repo_root),
+                    "smoke",
+                    "--json",
+                    "--maya-py",
+                    sys.executable,
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(Path(payload["wheel"]).name, "maya_tool-0.1.0-py3-none-any.whl")
+        self.assertEqual(payload["smoke_output"], ["placeholder_ns_tool", "True"])
