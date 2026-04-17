@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 import unittest
@@ -10,13 +9,13 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-TMP_ROOT = ROOT / "build" / "test-tmp"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from maya_cython_compile.config import resolve_config
 from maya_cython_compile.errors import DEPENDENCY_ERROR, CliError
 from maya_cython_compile.pipeline import build, ensure_maya_build_runtime, probe_maya_runtime
+from probe_fixtures import make_probe_completed_process, make_temp_repo, write_fake_maya_probe_layout
 
 
 def write_multi_target_build_config(repo_root: Path) -> None:
@@ -54,66 +53,6 @@ def write_multi_target_build_config(repo_root: Path) -> None:
     )
 
 
-def make_temp_repo(name: str) -> Path:
-    repo_root = TMP_ROOT / name
-    if repo_root.exists():
-        shutil.rmtree(repo_root)
-    repo_root.mkdir(parents=True, exist_ok=True)
-    return repo_root
-
-
-def write_fake_maya_probe_layout(repo_root: Path, *, library_filename: str) -> tuple[Path, Path, Path]:
-    runtime_root = repo_root / "fake-maya"
-    mayapy_name = "mayapy.exe" if library_filename.endswith(".lib") else "mayapy"
-    mayapy = runtime_root / "bin" / mayapy_name
-    mayapy.parent.mkdir(parents=True, exist_ok=True)
-    mayapy.write_text("", encoding="utf-8")
-    include_dir = runtime_root / "include"
-    include_dir.mkdir(parents=True, exist_ok=True)
-    library_dir = runtime_root / "lib"
-    library_dir.mkdir(parents=True, exist_ok=True)
-    library_file = library_dir / library_filename
-    library_file.write_text("", encoding="utf-8")
-    return mayapy, include_dir, library_file
-
-
-def make_probe_completed_process(
-    *,
-    mayapy: Path,
-    include_dir: Path,
-    library_file: Path,
-    runtime_platform: str,
-) -> subprocess.CompletedProcess[str]:
-    payload = {
-        "maya_py": str(mayapy),
-        "runtime_platform": runtime_platform,
-        "sys_platform": {"windows": "win32", "linux": "linux", "macos": "darwin"}[runtime_platform],
-        "sysconfig_platform": runtime_platform,
-        "python_version": "3.11.9",
-        "python_prefix": str(mayapy.parent.parent),
-        "python_base_prefix": str(mayapy.parent.parent),
-        "include_dir": str(include_dir),
-        "platinclude_dir": str(include_dir),
-        "config_vars": {
-            "INCLUDEPY": str(include_dir),
-            "CONFINCLUDEPY": str(include_dir),
-            "LIBDIR": str(library_file.parent),
-            "LIBPL": str(library_file.parent),
-            "LIBRARY": library_file.name,
-            "LDLIBRARY": library_file.name,
-            "INSTSONAME": library_file.name,
-            "EXT_SUFFIX": ".pyd" if runtime_platform == "windows" else ".so",
-            "SOABI": "cpython-311",
-        },
-    }
-    return subprocess.CompletedProcess(
-        args=[str(mayapy), "-c", "probe"],
-        returncode=0,
-        stdout=json.dumps(payload),
-        stderr="",
-    )
-
-
 class PipelineTests(unittest.TestCase):
     def test_probe_maya_runtime_returns_explicit_linux_metadata(self) -> None:
         repo_root = make_temp_repo("pipeline-probe-linux")
@@ -133,16 +72,16 @@ class PipelineTests(unittest.TestCase):
         ):
             payload = probe_maya_runtime(mayapy, target_platform="linux")
 
-        self.assertTrue(payload["probe_succeeded"])
-        self.assertEqual(payload["target_platform"], "linux")
-        self.assertEqual(payload["runtime_platform"], "linux")
-        self.assertTrue(payload["platform_matches_target"])
-        self.assertEqual(payload["include_dir"], str(include_dir))
-        self.assertEqual(payload["library_dir"], str(library_file.parent))
-        self.assertEqual(payload["library_name"], "python3.11")
-        self.assertEqual(payload["library_file"], str(library_file))
-        self.assertEqual(payload["extension_suffix"], ".so")
-        self.assertEqual(payload["soabi"], "cpython-311")
+        self.assertTrue(payload.probe_succeeded)
+        self.assertEqual(payload.target_platform, "linux")
+        self.assertEqual(payload.runtime_platform, "linux")
+        self.assertTrue(payload.platform_matches_target)
+        self.assertEqual(payload.include_dir, str(include_dir))
+        self.assertEqual(payload.library_dir, str(library_file.parent))
+        self.assertEqual(payload.library_name, "python3.11")
+        self.assertEqual(payload.library_file, str(library_file))
+        self.assertEqual(payload.extension_suffix, ".so")
+        self.assertEqual(payload.soabi, "cpython-311")
 
     def test_ensure_maya_build_runtime_rejects_target_platform_mismatch(self) -> None:
         repo_root = make_temp_repo("pipeline-probe-mismatch")
@@ -162,7 +101,7 @@ class PipelineTests(unittest.TestCase):
         ):
             payload = probe_maya_runtime(mayapy, target_platform="windows")
 
-        self.assertFalse(payload["platform_matches_target"])
+        self.assertFalse(payload.platform_matches_target)
         with self.assertRaises(CliError) as exc:
             ensure_maya_build_runtime(payload, mayapy)
 
