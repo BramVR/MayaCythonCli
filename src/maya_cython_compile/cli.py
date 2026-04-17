@@ -241,7 +241,20 @@ def render_text(payload: dict[str, Any]) -> list[str]:
         for key, value in payload["checks"].items():
             lines.append(f"{key}: {'ok' if value else 'missing'}")
         maya_runtime = payload.get("maya_runtime", {})
-        for key in ("maya_py", "include_dir", "lib_dir", "lib_name"):
+        for key in (
+            "maya_py",
+            "target_platform",
+            "runtime_platform",
+            "platform_matches_target",
+            "python_version",
+            "include_dir",
+            "library_dir",
+            "library_name",
+            "library_file",
+            "extension_suffix",
+            "soabi",
+            "error",
+        ):
             lines.append(f"{key}: {maya_runtime.get(key)}")
         return lines
 

@@ -46,7 +46,7 @@ It owns:
 
 - target selection
 - Conda and `mayapy` validation
-- Maya include and import-lib discovery
+- target-aware Maya runtime probing through `mayapy`
 - build env creation
 - destructive cleanup planning through the shared `--dry-run` and `--force` contract
 - temporary target tree generation
@@ -76,9 +76,11 @@ The pipeline now namespaces mutable outputs by selected target so different Maya
 The pipeline separates build-time Python from Maya runtime validation:
 
 - Conda env - used for `Cython`, `setuptools`, and wheel creation
-- `mayapy` - used for Maya ABI discovery and runtime smoke validation
+- `mayapy` - used for runtime metadata discovery via `sysconfig` and for smoke validation
 
 This lets the repo run from a normal Python environment without making `mayapy` the primary tool runner.
+
+The runtime probe is explicit instead of path-inferred. The pipeline executes `mayapy -c ...`, captures a JSON payload with runtime platform, Python version, include path, and library metadata, then validates that payload against the selected target before the build starts.
 
 ## Assembly model
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import shutil
+import subprocess
 import sys
 import unittest
 import zipfile
@@ -107,16 +108,56 @@ def write_fake_wheel(repo_root: Path, *, target_name: str = "default") -> Path:
     return wheel_path
 
 
-def write_fake_maya_runtime(repo_root: Path) -> Path:
+def write_fake_maya_probe_layout(repo_root: Path, *, library_filename: str) -> tuple[Path, Path, Path]:
     maya_root = repo_root / "fake-maya"
-    mayapy = maya_root / "bin" / "mayapy.exe"
+    mayapy_name = "mayapy.exe" if library_filename.endswith(".lib") else "mayapy"
+    mayapy = maya_root / "bin" / mayapy_name
     mayapy.parent.mkdir(parents=True, exist_ok=True)
     mayapy.write_text("", encoding="utf-8")
-    (maya_root / "Python" / "Include").mkdir(parents=True, exist_ok=True)
+    include_dir = maya_root / "include"
+    include_dir.mkdir(parents=True, exist_ok=True)
     lib_dir = maya_root / "lib"
     lib_dir.mkdir(parents=True, exist_ok=True)
-    (lib_dir / "python311.lib").write_text("", encoding="utf-8")
-    return mayapy
+    library_file = lib_dir / library_filename
+    library_file.write_text("", encoding="utf-8")
+    return mayapy, include_dir, library_file
+
+
+def make_probe_completed_process(
+    *,
+    mayapy: Path,
+    include_dir: Path,
+    library_file: Path,
+    runtime_platform: str,
+) -> subprocess.CompletedProcess[str]:
+    payload = {
+        "maya_py": str(mayapy),
+        "runtime_platform": runtime_platform,
+        "sys_platform": {"windows": "win32", "linux": "linux", "macos": "darwin"}[runtime_platform],
+        "sysconfig_platform": runtime_platform,
+        "python_version": "3.11.9",
+        "python_prefix": str(mayapy.parent.parent),
+        "python_base_prefix": str(mayapy.parent.parent),
+        "include_dir": str(include_dir),
+        "platinclude_dir": str(include_dir),
+        "config_vars": {
+            "INCLUDEPY": str(include_dir),
+            "CONFINCLUDEPY": str(include_dir),
+            "LIBDIR": str(library_file.parent),
+            "LIBPL": str(library_file.parent),
+            "LIBRARY": library_file.name,
+            "LDLIBRARY": library_file.name,
+            "INSTSONAME": library_file.name,
+            "EXT_SUFFIX": ".pyd" if runtime_platform == "windows" else ".so",
+            "SOABI": "cpython-311",
+        },
+    }
+    return subprocess.CompletedProcess(
+        args=[str(mayapy), "-c", "probe"],
+        returncode=0,
+        stdout=json.dumps(payload),
+        stderr="",
+    )
 
 
 class CliTests(unittest.TestCase):
@@ -233,14 +274,25 @@ class CliTests(unittest.TestCase):
         write_multi_target_build_config(repo_root)
         env_path = repo_root / ".conda" / "maya-cython-build"
         env_path.mkdir(parents=True, exist_ok=True)
-        mayapy = write_fake_maya_runtime(repo_root)
+        mayapy, include_dir, library_file = write_fake_maya_probe_layout(
+            repo_root,
+            library_filename="libpython3.11.so",
+        )
         (repo_root / "build" / "target-build" / "linux-2024").mkdir(parents=True, exist_ok=True)
         (repo_root / "build" / "tmp" / "linux-2024").mkdir(parents=True, exist_ok=True)
         (repo_root / "dist" / "linux-2024").mkdir(parents=True, exist_ok=True)
         (repo_root / "maya_tool.egg-info").mkdir(parents=True, exist_ok=True)
         stdout = io.StringIO()
 
-        with redirect_stdout(stdout):
+        with redirect_stdout(stdout), mock.patch(
+            "maya_cython_compile.pipeline.subprocess.run",
+            return_value=make_probe_completed_process(
+                mayapy=mayapy,
+                include_dir=include_dir,
+                library_file=library_file,
+                runtime_platform="linux",
+            ),
+        ):
             exit_code = main(
                 [
                     "--repo-root",
@@ -271,11 +323,26 @@ class CliTests(unittest.TestCase):
         write_multi_target_build_config(repo_root)
         env_path = repo_root / ".conda" / "maya-cython-build"
         env_path.mkdir(parents=True, exist_ok=True)
-        mayapy = write_fake_maya_runtime(repo_root)
+        mayapy, include_dir, library_file = write_fake_maya_probe_layout(
+            repo_root,
+            library_filename="python311.lib",
+        )
         (repo_root / "build" / "target-build" / "windows-2025").mkdir(parents=True, exist_ok=True)
         stderr = io.StringIO()
 
-        with redirect_stderr(stderr), mock.patch("builtins.input", side_effect=AssertionError("stdin not allowed")):
+        with (
+            redirect_stderr(stderr),
+            mock.patch("builtins.input", side_effect=AssertionError("stdin not allowed")),
+            mock.patch(
+                "maya_cython_compile.pipeline.subprocess.run",
+                return_value=make_probe_completed_process(
+                    mayapy=mayapy,
+                    include_dir=include_dir,
+                    library_file=library_file,
+                    runtime_platform="windows",
+                ),
+            ),
+        ):
             exit_code = main(
                 [
                     "--repo-root",
@@ -292,3 +359,43 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, USAGE_ERROR)
         self.assertIn("Run with --dry-run to inspect the plan", stderr.getvalue())
+
+    def test_main_doctor_json_reports_target_aware_runtime_metadata(self) -> None:
+        repo_root = make_temp_repo("cli-doctor-runtime")
+        write_multi_target_build_config(repo_root)
+        mayapy, include_dir, library_file = write_fake_maya_probe_layout(
+            repo_root,
+            library_filename="libpython3.11.so",
+        )
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout), mock.patch(
+            "maya_cython_compile.pipeline.subprocess.run",
+            return_value=make_probe_completed_process(
+                mayapy=mayapy,
+                include_dir=include_dir,
+                library_file=library_file,
+                runtime_platform="linux",
+            ),
+        ):
+            exit_code = main(
+                [
+                    "--repo-root",
+                    str(repo_root),
+                    "--target",
+                    "linux-2024",
+                    "--maya-py",
+                    str(mayapy),
+                    "doctor",
+                    "--json",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["checks"]["maya_probe_ok"])
+        self.assertTrue(payload["checks"]["maya_platform_matches_target"])
+        self.assertEqual(payload["maya_runtime"]["runtime_platform"], "linux")
+        self.assertEqual(payload["maya_runtime"]["target_platform"], "linux")
+        self.assertEqual(payload["maya_runtime"]["library_name"], "python3.11")
+        self.assertEqual(payload["maya_runtime"]["library_file"], str(library_file))

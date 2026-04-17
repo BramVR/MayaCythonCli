@@ -7,7 +7,7 @@ read_when:
 
 # CLI
 
-`maya-cython-compile` is a non-interactive Windows-first CLI for building Maya-compatible Cython wheels, validating them under `mayapy`, and assembling Maya module payloads for an explicit named target.
+`maya-cython-compile` is a non-interactive CLI for building Maya-compatible Cython wheels, validating them under `mayapy`, and assembling Maya module payloads for an explicit named target.
 
 ## Usage
 
@@ -63,7 +63,7 @@ Prints the fully resolved config from tracked build metadata, local config, envi
 
 ### `doctor`
 
-Checks whether the selected target's Conda executable, env path, and `mayapy` path exist, then probes Maya include and import-lib paths from `mayapy`.
+Checks whether the selected target's Conda executable, env path, and `mayapy` path exist, then runs a target-aware `mayapy` probe that reports runtime platform, Python version, include path, and Python library metadata from `sysconfig`.
 
 ### `create-env`
 
@@ -71,7 +71,7 @@ Creates the local Conda build environment from [../environment.yml](../environme
 
 ### `build`
 
-Builds the selected target's wheel inside the resolved Conda env. It validates Maya runtime discovery, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, and writes the newest wheel to `dist/<target>/`.
+Builds the selected target's wheel inside the resolved Conda env. It validates the `mayapy` probe, rejects a target platform mismatch, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, and writes the newest wheel to `dist/<target>/`.
 
 ### `smoke`
 
@@ -109,6 +109,12 @@ Dry-run behavior:
 - it does not change files
 - `run --dry-run` returns one dry-run payload per included step
 - target-aware dry-run payloads include the resolved `target`
+
+Doctor behavior:
+
+- reports the resolved config and explicit `mayapy` runtime metadata
+- includes probe success and target-platform match checks
+- keeps probe failures in the doctor payload instead of prompting or reading stdin
 
 ## Safety contract
 

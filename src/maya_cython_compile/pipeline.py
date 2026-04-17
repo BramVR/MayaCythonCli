@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -28,20 +29,68 @@ class DeletionTarget:
     reason: str
 
 
+MAYA_RUNTIME_PROBE_SCRIPT = """
+import json
+import sys
+import sysconfig
+
+
+def _runtime_platform() -> str:
+    return {
+        "win32": "windows",
+        "cygwin": "windows",
+        "linux": "linux",
+        "darwin": "macos",
+    }.get(sys.platform, sys.platform)
+
+
+payload = {
+    "maya_py": sys.executable,
+    "runtime_platform": _runtime_platform(),
+    "sys_platform": sys.platform,
+    "sysconfig_platform": sysconfig.get_platform(),
+    "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+    "python_prefix": sys.prefix,
+    "python_base_prefix": sys.base_prefix,
+    "include_dir": sysconfig.get_path("include"),
+    "platinclude_dir": sysconfig.get_path("platinclude"),
+    "config_vars": {
+        key: sysconfig.get_config_var(key)
+        for key in (
+            "INCLUDEPY",
+            "CONFINCLUDEPY",
+            "LIBDIR",
+            "LIBPL",
+            "LIBRARY",
+            "LDLIBRARY",
+            "INSTSONAME",
+            "EXT_SUFFIX",
+            "SOABI",
+        )
+    },
+}
+print(json.dumps(payload))
+""".strip()
+
+
 def show_config(config: ResolvedConfig) -> dict[str, Any]:
     return as_dict(config)
 
 
 def doctor(config: ResolvedConfig) -> dict[str, Any]:
-    maya = probe_maya_runtime(config.local.maya_py)
+    maya = probe_maya_runtime(config.local.maya_py, target_platform=config.build.platform)
     return {
         "config": show_config(config),
         "checks": {
             "conda_exe_exists": config.local.conda_exe.exists(),
             "env_exists": config.local.env_path.exists(),
             "maya_py_exists": config.local.maya_py.exists(),
+            "maya_probe_ok": maya["probe_succeeded"],
+            "maya_platform_matches_target": (
+                maya["platform_matches_target"] is True if maya["target_platform"] else maya["probe_succeeded"]
+            ),
             "maya_include_exists": maya["include_dir"] is not None,
-            "maya_lib_exists": maya["lib_dir"] is not None and maya["lib_name"] is not None,
+            "maya_lib_exists": maya["library_file"] is not None,
         },
         "maya_runtime": maya,
     }
@@ -102,9 +151,8 @@ def build(
             DEPENDENCY_ERROR,
         )
 
-    maya = probe_maya_runtime(config.local.maya_py)
-    if not maya["include_dir"] or not maya["lib_dir"] or not maya["lib_name"]:
-        raise CliError(f"Could not resolve Maya Python runtime from {config.local.maya_py}", DEPENDENCY_ERROR)
+    maya = probe_maya_runtime(config.local.maya_py, target_platform=config.build.platform)
+    ensure_maya_build_runtime(maya, config.local.maya_py)
 
     deletion_targets = plan_build_cleanup(config)
     dist_dir = target_dist_dir(config)
@@ -143,8 +191,14 @@ def build(
     temp_root.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["MAYA_PYTHON_INCLUDE"] = str(maya["include_dir"])
-    env["MAYA_PYTHON_LIBDIR"] = str(maya["lib_dir"])
-    env["MAYA_PYTHON_LIBNAME"] = str(maya["lib_name"])
+    env["MAYA_PYTHON_LIBDIR"] = str(maya["library_dir"])
+    env["MAYA_PYTHON_LIBNAME"] = str(maya["library_name"])
+    env["MAYA_PYTHON_LIBRARYFILE"] = str(maya["library_file"])
+    env["MAYA_RUNTIME_PLATFORM"] = str(maya["runtime_platform"])
+    env["MAYA_TARGET_PLATFORM"] = str(maya["target_platform"])
+    env["MAYA_PYTHON_VERSION"] = str(maya["python_version"])
+    env["MAYA_PYTHON_EXT_SUFFIX"] = str(maya["extension_suffix"])
+    env["MAYA_PYTHON_SOABI"] = str(maya["soabi"])
     env["TEMP"] = str(temp_root)
     env["TMP"] = str(temp_root)
 
@@ -337,31 +391,185 @@ def run_pipeline(
     return steps
 
 
-def probe_maya_runtime(maya_py: Path) -> dict[str, str | None]:
+def probe_maya_runtime(maya_py: Path, *, target_platform: str | None = None) -> dict[str, Any]:
     if not maya_py.exists():
-        return {"maya_py": str(maya_py), "include_dir": None, "lib_dir": None, "lib_name": None}
+        return _runtime_probe_result(
+            maya_py=maya_py,
+            target_platform=target_platform,
+            error=f"mayapy not found: {maya_py}",
+        )
 
-    maya_root = maya_py.parent.parent
-    include_dir: Path | None = maya_root / "Python" / "Include"
-    if include_dir is not None and not include_dir.exists():
-        headers = sorted(maya_root.rglob("Python.h"))
-        include_dir = headers[0].parent if headers else None
+    result = subprocess.run(
+        [str(maya_py), "-c", MAYA_RUNTIME_PROBE_SCRIPT],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if is_interrupt_returncode(result.returncode):
+        raise CliError("Interrupted.", INTERRUPTED_ERROR)
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "mayapy probe failed."
+        return _runtime_probe_result(
+            maya_py=maya_py,
+            target_platform=target_platform,
+            error=message,
+        )
 
-    lib_dir: Path | None = maya_root / "lib"
-    lib_name: str | None = None
-    if lib_dir is not None and lib_dir.exists():
-        libs = sorted(lib_dir.glob("python*.lib"))
-        if libs:
-            lib_name = libs[0].stem
-    else:
-        lib_dir = None
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        return _runtime_probe_result(
+            maya_py=maya_py,
+            target_platform=target_platform,
+            error=f"mayapy probe returned invalid JSON: {exc}",
+        )
+
+    runtime_platform = payload.get("runtime_platform")
+    config_vars = payload.get("config_vars", {})
+    include_dir = _resolve_existing_path(
+        payload.get("include_dir"),
+        payload.get("platinclude_dir"),
+        config_vars.get("INCLUDEPY"),
+        config_vars.get("CONFINCLUDEPY"),
+    )
+    library_file = _resolve_python_library_file(config_vars)
+    library_dir = str(library_file.parent) if library_file else None
+    library_name = _library_name_from_filename(library_file.name) if library_file else None
+    platform_matches_target = None
+    if target_platform and runtime_platform:
+        platform_matches_target = runtime_platform == target_platform
 
     return {
         "maya_py": str(maya_py),
+        "probe_succeeded": True,
+        "error": None,
+        "target_platform": target_platform,
+        "runtime_platform": runtime_platform,
+        "platform_matches_target": platform_matches_target,
+        "python_executable": payload.get("maya_py"),
+        "python_version": payload.get("python_version"),
+        "python_prefix": payload.get("python_prefix"),
+        "python_base_prefix": payload.get("python_base_prefix"),
+        "sys_platform": payload.get("sys_platform"),
+        "sysconfig_platform": payload.get("sysconfig_platform"),
         "include_dir": str(include_dir) if include_dir else None,
-        "lib_dir": str(lib_dir) if lib_dir else None,
-        "lib_name": lib_name,
+        "platinclude_dir": payload.get("platinclude_dir"),
+        "library_dir": library_dir,
+        "library_name": library_name,
+        "library_file": str(library_file) if library_file else None,
+        "extension_suffix": config_vars.get("EXT_SUFFIX"),
+        "soabi": config_vars.get("SOABI"),
+        "config_vars": {
+            key: value
+            for key, value in config_vars.items()
+            if key in {"INCLUDEPY", "CONFINCLUDEPY", "LIBDIR", "LIBPL", "LIBRARY", "LDLIBRARY", "INSTSONAME"}
+        },
     }
+
+
+def ensure_maya_build_runtime(maya: dict[str, Any], maya_py: Path) -> None:
+    if not maya["probe_succeeded"]:
+        message = maya["error"] or f"Could not probe Maya Python runtime from {maya_py}"
+        raise CliError(message, DEPENDENCY_ERROR)
+    if maya["platform_matches_target"] is False:
+        raise CliError(
+            (
+                f"Configured target platform {maya['target_platform']} does not match "
+                f"mayapy runtime {maya['runtime_platform']}: {maya_py}"
+            ),
+            DEPENDENCY_ERROR,
+        )
+    if not maya["include_dir"] or not maya["library_dir"] or not maya["library_name"] or not maya["library_file"]:
+        raise CliError(f"Could not resolve Maya Python runtime from {maya_py}", DEPENDENCY_ERROR)
+
+
+def _runtime_probe_result(
+    *,
+    maya_py: Path,
+    target_platform: str | None,
+    error: str,
+) -> dict[str, Any]:
+    return {
+        "maya_py": str(maya_py),
+        "probe_succeeded": False,
+        "error": error,
+        "target_platform": target_platform,
+        "runtime_platform": None,
+        "platform_matches_target": None,
+        "python_executable": None,
+        "python_version": None,
+        "python_prefix": None,
+        "python_base_prefix": None,
+        "sys_platform": None,
+        "sysconfig_platform": None,
+        "include_dir": None,
+        "platinclude_dir": None,
+        "library_dir": None,
+        "library_name": None,
+        "library_file": None,
+        "extension_suffix": None,
+        "soabi": None,
+        "config_vars": {},
+    }
+
+
+def _resolve_existing_path(*raw_paths: str | None) -> Path | None:
+    for raw_path in raw_paths:
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        if path.exists():
+            return path
+    return None
+
+
+def _resolve_python_library_file(config_vars: dict[str, Any]) -> Path | None:
+    candidate_names: list[str] = []
+    for key in ("LIBRARY", "LDLIBRARY", "INSTSONAME"):
+        raw_value = config_vars.get(key)
+        if not raw_value or not isinstance(raw_value, str):
+            continue
+        path = Path(raw_value)
+        if path.is_absolute() and path.exists():
+            return path
+        candidate_names.append(path.name)
+
+    candidate_dirs: list[Path] = []
+    for key in ("LIBDIR", "LIBPL"):
+        raw_value = config_vars.get(key)
+        if not raw_value or not isinstance(raw_value, str):
+            continue
+        path = Path(raw_value)
+        if path.exists():
+            candidate_dirs.append(path)
+
+    seen: set[Path] = set()
+    unique_dirs: list[Path] = []
+    for candidate_dir in candidate_dirs:
+        resolved = candidate_dir.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique_dirs.append(candidate_dir)
+
+    for candidate_dir in unique_dirs:
+        for candidate_name in candidate_names:
+            candidate_file = candidate_dir / candidate_name
+            if candidate_file.exists():
+                return candidate_file
+    return None
+
+
+def _library_name_from_filename(filename: str) -> str:
+    normalized = filename
+    for suffix in (".lib", ".dll", ".dylib", ".a", ".so"):
+        marker = normalized.lower().find(suffix)
+        if marker != -1:
+            normalized = normalized[:marker]
+            break
+    if normalized.startswith("lib") and not filename.lower().endswith(".lib"):
+        normalized = normalized[3:]
+    return normalized
 
 
 def plan_create_env_refresh(config: ResolvedConfig) -> list[DeletionTarget]:

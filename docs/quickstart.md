@@ -59,7 +59,9 @@ maya-cython-compile --target windows-2025 doctor --json
 - whether Conda exists
 - whether the configured env path exists
 - whether `mayapy` exists
-- whether Maya headers and import libraries can be resolved
+- whether the `mayapy` probe succeeded
+- whether the probed runtime platform matches the selected target
+- the resolved Python include path and Python library metadata reported by `mayapy`
 
 ## Create the build env
 
@@ -80,7 +82,8 @@ maya-cython-compile --target windows-2025 build --force
 The build step:
 
 - validates the env exists
-- resolves Maya include and lib paths from `mayapy`
+- probes `mayapy` directly for Python include and library metadata
+- rejects a selected target when its platform does not match the probed `mayapy` runtime
 - cleans prior target-scoped build artifacts when `--force` allows it
 - prepares `build/target-build/<target>/`
 - runs `setup.py bdist_wheel` inside the configured Conda env
