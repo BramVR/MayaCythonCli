@@ -93,7 +93,7 @@ class ConfigTests(unittest.TestCase):
         write_build_config(repo_root)
         discovered = r"C:\Miniconda3\condabin\conda.exe" if os.name == "nt" else "/opt/miniconda3/bin/conda"
 
-        with patch("maya_cython_compile.config.shutil.which", return_value=discovered):
+        with patch("maya_cython_compile.conda.shutil.which", return_value=discovered):
             config = resolve_config(repo_root)
 
         self.assertEqual(config.build.target_name, DEFAULT_TARGET_NAME)
@@ -106,7 +106,7 @@ class ConfigTests(unittest.TestCase):
         repo_root = make_temp_repo("config-default-conda-platform-fallback")
         write_build_config(repo_root)
 
-        with patch("maya_cython_compile.config.shutil.which", return_value=None):
+        with patch("maya_cython_compile.conda.shutil.which", return_value=None):
             config = resolve_config(repo_root)
 
         expected = (

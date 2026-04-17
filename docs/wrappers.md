@@ -9,6 +9,8 @@ read_when:
 
 The repo still ships PowerShell entrypoints under [../scripts](../scripts), but they delegate into `maya_cython_compile` rather than owning pipeline logic themselves.
 
+The four public wrappers share the internal helper [../scripts/_invoke-cli.ps1](../scripts/_invoke-cli.ps1) so interpreter fallback and CLI dispatch stay consistent in one place.
+
 ## Available wrappers
 
 - [../scripts/create-conda-env.ps1](../scripts/create-conda-env.ps1)

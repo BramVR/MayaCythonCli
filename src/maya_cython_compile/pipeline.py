@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .conda import conda_command, conda_executable_exists
 from .config import ResolvedConfig, as_dict
 from .errors import (
     ASSEMBLE_ERROR,
@@ -135,7 +136,7 @@ def doctor(config: ResolvedConfig) -> dict[str, Any]:
     return {
         "config": show_config(config),
         "checks": {
-            "conda_exe_exists": executable_exists(config.local.conda_exe),
+            "conda_exe_exists": conda_executable_exists(config.local.conda_exe),
             "env_exists": config.local.env_path.exists(),
             "maya_py_exists": config.local.maya_py.exists(),
             "maya_probe_ok": maya.probe_succeeded,
@@ -155,7 +156,7 @@ def create_env(
     dry_run: bool = False,
     force: bool = False,
 ) -> dict[str, Any]:
-    if not executable_exists(config.local.conda_exe):
+    if not conda_executable_exists(config.local.conda_exe):
         raise CliError(f"Conda was not found at {config.local.conda_exe}", DEPENDENCY_ERROR)
 
     deletion_targets = plan_create_env_refresh(config)
@@ -709,37 +710,12 @@ def target_module_root(config: ResolvedConfig, module_name: str) -> Path:
     return config.repo_root / "dist" / "module" / config.build.target_name / module_name
 
 
-def conda_command(conda_exe: str, *args: str) -> list[str]:
-    resolved = resolve_executable_for_spawn(conda_exe)
-    if Path(resolved).suffix.lower() in {".bat", ".cmd"}:
-        if os.name != "nt":
-            raise CliError(
-                f"Batch Conda entrypoints are only supported on Windows: {resolved}",
-                DEPENDENCY_ERROR,
-            )
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", resolved, *args]
-    return [resolved, *args]
-
-
 def module_platform_token(platform: str) -> str:
     return {
         "windows": "win64",
         "linux": "linux",
         "macos": "mac",
     }[platform]
-
-
-def executable_exists(executable: str) -> bool:
-    if _looks_like_path(executable):
-        return Path(executable).exists()
-    return shutil.which(executable) is not None
-
-
-def resolve_executable_for_spawn(executable: str) -> str:
-    if _looks_like_path(executable):
-        return executable
-    discovered = shutil.which(executable)
-    return discovered or executable
 
 
 def render_target_environment_yaml(base_environment: str, python_version: str) -> str:
@@ -783,10 +759,6 @@ def normalized_python_version(raw_value: str) -> tuple[int, ...]:
     if match is None:
         return ()
     return tuple(int(part) for part in match.group(1).split("."))
-
-
-def _looks_like_path(raw_value: str) -> bool:
-    return Path(raw_value).is_absolute() or raw_value.startswith(".") or "/" in raw_value or "\\" in raw_value
 
 
 def delete_paths(paths: list[DeletionTarget]) -> None:

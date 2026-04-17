@@ -235,7 +235,7 @@ class PipelineTests(unittest.TestCase):
         if os.name != "nt":
             self.skipTest("Windows batch launcher requires Windows path semantics.")
 
-        with mock.patch.dict("maya_cython_compile.pipeline.os.environ", {"COMSPEC": r"C:\Windows\System32\cmd.exe"}):
+        with mock.patch.dict("maya_cython_compile.conda.os.environ", {"COMSPEC": r"C:\Windows\System32\cmd.exe"}):
             command = conda_command(r"C:\Miniconda3\condabin\conda.bat", "env", "create")
 
         self.assertEqual(

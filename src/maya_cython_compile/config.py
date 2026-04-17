@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CONDA_COMMAND = "conda"
+from .conda import default_conda_exe, resolve_conda_executable
+
 DEFAULT_MAYA_PY = r"C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 DEFAULT_ENV_DIR = ".conda"
 DEFAULT_PYTHON_VERSION = "3.11"
@@ -124,13 +124,13 @@ def resolve_config(
     )
     target_payload = _local_target_payload(file_payload, build.target_name)
 
-    resolved_conda = _resolve_executable(
+    resolved_conda = resolve_conda_executable(
         repo_root,
         conda_exe
         or os.environ.get("MAYA_CYTHON_COMPILE_CONDA_EXE")
         or target_payload.get("conda_exe")
         or file_payload.get("conda_exe")
-        or _default_conda_exe(),
+        or default_conda_exe(),
     )
     resolved_env = _resolve_path(
         repo_root,
@@ -200,38 +200,8 @@ def _resolve_path(repo_root: Path, raw_path: str) -> Path:
     return (repo_root / path).resolve()
 
 
-def _resolve_executable(repo_root: Path, raw_value: str) -> str:
-    path = Path(raw_value)
-    if path.is_absolute():
-        return str(path)
-    if _is_explicit_relative_path(raw_value):
-        return str((repo_root / path).resolve())
-
-    discovered = shutil.which(raw_value)
-    if discovered:
-        return str(Path(discovered))
-
-    candidate = (repo_root / path).resolve()
-    if candidate.exists():
-        return str(candidate)
-    return raw_value
-
-
-def _default_conda_exe() -> str:
-    discovered = shutil.which(DEFAULT_CONDA_COMMAND)
-    if discovered:
-        return discovered
-    if os.name == "nt":
-        return str(Path.home() / "anaconda3" / "condabin" / "conda.bat")
-    return DEFAULT_CONDA_COMMAND
-
-
 def _default_env_path(target_name: str) -> str:
     return f"{DEFAULT_ENV_DIR}/{target_name}"
-
-
-def _is_explicit_relative_path(raw_value: str) -> bool:
-    return raw_value.startswith(".") or "/" in raw_value or "\\" in raw_value
 
 
 def _available_targets(payload: dict[str, Any]) -> tuple[str, ...]:

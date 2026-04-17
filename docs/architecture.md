@@ -16,6 +16,11 @@ The repo treats `maya-cython-compile` as the product. The Maya package is input 
 
 That split avoids coupling the builder and the thing being built into one artifact.
 
+Supporting helper modules keep cross-cutting launch behavior centralized:
+
+- [../src/maya_cython_compile/conda.py](../src/maya_cython_compile/conda.py) - Conda executable resolution, existence checks, and platform-aware command spawning
+- [../scripts/_invoke-cli.ps1](../scripts/_invoke-cli.ps1) - shared PowerShell wrapper helper for interpreter fallback and CLI dispatch
+
 ## Source of truth
 
 Tracked build metadata lives in [../build-config.json](../build-config.json).
