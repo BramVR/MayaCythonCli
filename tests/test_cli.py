@@ -29,6 +29,7 @@ def write_build_config(repo_root: Path) -> None:
                 "package_dir": "src/maya_tool",
                 "module_name": "MayaTool",
                 "maya_version": "2025",
+                "python_version": "3.11",
                 "version": "0.1.0",
                 "compiled_modules": ["_cy_logic"],
                 "package_data": ["*.json"],
@@ -65,11 +66,13 @@ def write_multi_target_build_config(repo_root: Path) -> None:
                         "platform": "windows",
                         "module_name": "MayaToolWin",
                         "maya_version": "2025",
+                        "python_version": "3.11",
                     },
                     "linux-2024": {
                         "platform": "linux",
                         "module_name": "MayaToolLinux",
                         "maya_version": "2024",
+                        "python_version": "3.11",
                     },
                 },
             },
@@ -152,6 +155,7 @@ class CliTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["config"]["target"], "linux-2024")
         self.assertEqual(payload["config"]["platform"], "linux")
+        self.assertEqual(payload["config"]["python_version"], "3.11")
         self.assertEqual(payload["config"]["package_name"], "maya_tool")
         self.assertEqual(payload["config"]["module_name"], "MayaToolLinux")
 
@@ -183,7 +187,7 @@ class CliTests(unittest.TestCase):
     def test_main_create_env_dry_run_json_shows_refresh(self) -> None:
         repo_root = make_temp_repo("cli-create-env-dry-run")
         write_multi_target_build_config(repo_root)
-        env_path = repo_root / ".conda" / "maya-cython-build"
+        env_path = repo_root / ".conda" / "windows-2025"
         env_path.mkdir(parents=True, exist_ok=True)
         stdout = io.StringIO()
 
@@ -206,6 +210,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["command"], "create-env")
         self.assertIn("--force", payload["would_run"])
         self.assertEqual(payload["delete"][0]["path"], str(env_path))
+        self.assertEqual(payload["python_version"], "3.11")
+        self.assertEqual(
+            payload["environment_file"],
+            str(repo_root / "build" / "tmp" / "windows-2025" / "conda-environment.yml"),
+        )
 
     def test_main_build_dry_run_json_lists_cleanup_targets(self) -> None:
         repo_root = make_temp_repo("cli-build-dry-run")
@@ -333,7 +342,9 @@ class CliTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertTrue(payload["checks"]["maya_probe_ok"])
         self.assertTrue(payload["checks"]["maya_platform_matches_target"])
+        self.assertTrue(payload["checks"]["maya_python_matches_target"])
         self.assertEqual(payload["maya_runtime"]["runtime_platform"], "linux")
         self.assertEqual(payload["maya_runtime"]["target_platform"], "linux")
+        self.assertEqual(payload["maya_runtime"]["target_python_version"], "3.11")
         self.assertEqual(payload["maya_runtime"]["library_name"], "python3.11")
         self.assertEqual(payload["maya_runtime"]["library_file"], str(library_file))

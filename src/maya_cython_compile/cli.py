@@ -244,9 +244,11 @@ def render_text(payload: dict[str, Any]) -> list[str]:
         for key in (
             "maya_py",
             "target_platform",
+            "target_python_version",
             "runtime_platform",
             "platform_matches_target",
             "python_version",
+            "python_matches_target",
             "include_dir",
             "library_dir",
             "library_name",

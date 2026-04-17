@@ -7,7 +7,7 @@ read_when:
 
 # Testing
 
-For repo changes, prefer the repo build env over a global interpreter. Activate the env created by `maya-cython-compile create-env`, then run:
+For repo changes, prefer the selected target build env over a global interpreter. Activate the env created by `maya-cython-compile create-env`, then run:
 
 ## Verification commands
 
@@ -17,7 +17,7 @@ python -m mypy src tests
 python -m unittest discover -s tests
 ```
 
-If the env is not activated, run the same commands with the `python.exe` under your configured `env_path`.
+If the env is not activated, run the same commands with the `python.exe` under your resolved target `env_path`.
 
 ## What they cover
 

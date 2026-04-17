@@ -14,6 +14,7 @@ Build a Maya-targeted Cython wheel from a normal Python environment, validate it
 - default target: `windows-2025`
 - platform: Windows
 - Maya version: `2025`
+- target Python: `3.11`
 - target package: `src/maya_tool`
 - compiled module: `maya_tool._cy_logic`
 - bundled data: `tool_manifest.json`
@@ -30,13 +31,13 @@ You need:
 
 Default paths:
 
-- Conda: `%USERPROFILE%\anaconda3\condabin\conda.bat`
+- Conda: `conda` from `PATH`, otherwise `%USERPROFILE%\anaconda3\condabin\conda.bat` on Windows
 - `mayapy`: `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
-- build env: `.conda/maya-cython-build`
+- build env: `.conda/<target>`
 
 Override them with CLI flags, environment variables, or `<repo-root>/.maya-cython-compile.json`.
 
-If you build multiple targets from one repo clone, prefer target-specific `env_path` and `maya_py` entries in `.maya-cython-compile.json.targets`.
+If you build multiple targets from one repo clone, keep the default target-specific env paths or set explicit target-specific `env_path`, `maya_py`, and `conda_exe` entries in `.maya-cython-compile.json.targets`.
 
 ## Install the CLI
 
@@ -70,7 +71,7 @@ maya-cython-compile --target windows-2025 create-env --dry-run
 maya-cython-compile --target windows-2025 create-env --force
 ```
 
-This creates or refreshes the selected target's Conda env from [../environment.yml](../environment.yml). If that env already exists, the command refuses to replace it unless you pass `--force`.
+This creates or refreshes the selected target's Conda env from [../environment.yml](../environment.yml). The CLI writes a target-scoped environment file, pins its `python=` dependency from the resolved target `python_version`, and then runs Conda against that file. If that env already exists, the command refuses to replace it unless you pass `--force`.
 
 ## Build the wheel
 
@@ -83,7 +84,7 @@ The build step:
 
 - validates the env exists
 - probes `mayapy` directly for Python include and library metadata
-- rejects a selected target when its platform does not match the probed `mayapy` runtime
+- rejects a selected target when its platform or Python version does not match the probed `mayapy` runtime
 - cleans prior target-scoped build artifacts when `--force` allows it
 - prepares `build/target-build/<target>/`
 - runs `setup.py bdist_wheel` inside the configured Conda env
@@ -124,6 +125,8 @@ maya-cython-compile --target windows-2025 run --skip-smoke
 maya-cython-compile --target windows-2025 run --skip-assemble
 maya-cython-compile --target windows-2025 run --force --module-name StudioTool --maya-version 2025
 ```
+
+Sharing one Conda env across multiple targets is only safe when those targets use the same Python ABI and compatible build dependencies. The default `.conda/<target>` layout avoids cross-target wheel and interpreter drift.
 
 ## Non-interactive contract
 

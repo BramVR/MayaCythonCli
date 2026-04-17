@@ -1,8 +1,8 @@
 param(
     [string]$Target = "",
-    [string]$EnvPath = ".conda/maya-cython-build",
-    [string]$ModuleName = "MayaTool",
-    [string]$MayaVersion = "2025",
+    [string]$EnvPath = "",
+    [string]$ModuleName = "",
+    [string]$MayaVersion = "",
     [switch]$DryRun,
     [switch]$Force
 )
@@ -11,20 +11,23 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $env:PYTHONPATH = Join-Path $repoRoot "src"
 $py = Get-Command py -ErrorAction SilentlyContinue
 $python = Get-Command python -ErrorAction SilentlyContinue
-$resolvedEnvPath = if ([System.IO.Path]::IsPathRooted($EnvPath)) {
-    $EnvPath
+$localPython = $null
+if ($EnvPath) {
+    $resolvedEnvPath = if ([System.IO.Path]::IsPathRooted($EnvPath)) {
+        $EnvPath
+    }
+    else {
+        Join-Path $repoRoot ($EnvPath -replace "/", "\")
+    }
+    $localPython = Join-Path $resolvedEnvPath "python.exe"
 }
-else {
-    Join-Path $repoRoot ($EnvPath -replace "/", "\")
-}
-$localPython = Join-Path $resolvedEnvPath "python.exe"
 
-if (Test-Path $localPython) {
+if ($localPython -and (Test-Path $localPython)) {
     & $localPython -m maya_cython_compile assemble --repo-root $repoRoot @(
         if ($Target) { "--target"; $Target }
-        "--env-path"; $EnvPath
-        "--module-name"; $ModuleName
-        "--maya-version"; $MayaVersion
+        if ($EnvPath) { "--env-path"; $EnvPath }
+        if ($ModuleName) { "--module-name"; $ModuleName }
+        if ($MayaVersion) { "--maya-version"; $MayaVersion }
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )
@@ -32,9 +35,9 @@ if (Test-Path $localPython) {
 elseif ($py) {
     & $py.Source -3 -m maya_cython_compile assemble --repo-root $repoRoot @(
         if ($Target) { "--target"; $Target }
-        "--env-path"; $EnvPath
-        "--module-name"; $ModuleName
-        "--maya-version"; $MayaVersion
+        if ($EnvPath) { "--env-path"; $EnvPath }
+        if ($ModuleName) { "--module-name"; $ModuleName }
+        if ($MayaVersion) { "--maya-version"; $MayaVersion }
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )
@@ -42,9 +45,9 @@ elseif ($py) {
 elseif ($python) {
     & $python.Source -m maya_cython_compile assemble --repo-root $repoRoot @(
         if ($Target) { "--target"; $Target }
-        "--env-path"; $EnvPath
-        "--module-name"; $ModuleName
-        "--maya-version"; $MayaVersion
+        if ($EnvPath) { "--env-path"; $EnvPath }
+        if ($ModuleName) { "--module-name"; $ModuleName }
+        if ($MayaVersion) { "--maya-version"; $MayaVersion }
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )

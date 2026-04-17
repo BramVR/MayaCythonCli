@@ -35,6 +35,8 @@ For local path settings:
 
 Relative paths from flags, env vars, or `.maya-cython-compile.json` resolve relative to `repo_root`.
 
+For `conda_exe`, bare command names such as `conda` are resolved from `PATH` before any repo-relative fallback is considered.
+
 ## Local config location
 
 Default path:
@@ -52,7 +54,7 @@ Supported top-level keys:
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `target` | string | default named target for this machine |
-| `conda_exe` | path string | fallback Conda entrypoint |
+| `conda_exe` | string | fallback Conda entrypoint path or command |
 | `env_path` | path string | fallback local build env path |
 | `maya_py` | path string | fallback `mayapy` executable |
 | `targets` | object | per-target local path overrides |
@@ -61,7 +63,7 @@ Supported per-target keys under `targets.<name>`:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `conda_exe` | path string | target-specific Conda entrypoint |
+| `conda_exe` | string | target-specific Conda entrypoint path or command |
 | `env_path` | path string | target-specific build env path |
 | `maya_py` | path string | target-specific `mayapy` executable |
 
@@ -70,7 +72,7 @@ Example:
 ```json
 {
   "target": "linux-2024",
-  "conda_exe": "C:/Users/me/anaconda3/condabin/conda.bat",
+  "conda_exe": "conda",
   "targets": {
     "windows-2025": {
       "env_path": ".conda/windows-2025",
@@ -97,8 +99,8 @@ Example:
 
 | Setting | Default |
 | --- | --- |
-| `conda_exe` | `%USERPROFILE%\anaconda3\condabin\conda.bat` |
-| `env_path` | `.conda/maya-cython-build` |
+| `conda_exe` | `conda` from `PATH`, otherwise `%USERPROFILE%\anaconda3\condabin\conda.bat` on Windows |
+| `env_path` | `.conda/<target>` |
 | `maya_py` | `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe` |
 
 ## `build-config.json`
@@ -125,6 +127,7 @@ Legacy optional fields:
 | --- | --- | --- |
 | `module_name` | string | `package_name` |
 | `maya_version` | string or number | `"2025"` |
+| `python_version` | string | `"3.11"` |
 | `package_data` | array of strings | `[]` |
 | `smoke.callable` | string or null | `null` |
 | `smoke.compiled_modules` | array of strings | `compiled_modules` |
@@ -146,6 +149,7 @@ Each target entry may override any tracked build field. Common cases are:
 | `platform` | string | target platform, normalized from `windows`, `linux`, or `macos` aliases |
 | `module_name` | string | target-specific Maya module name |
 | `maya_version` | string or number | target-specific Maya version |
+| `python_version` | string | target-specific Conda Python used to build the wheel |
 
 Nested `smoke` config is merged, so target entries can override only the smoke keys they need.
 
@@ -169,12 +173,14 @@ Current repo example:
     "windows-2025": {
       "platform": "windows",
       "module_name": "MayaTool",
-      "maya_version": "2025"
+      "maya_version": "2025",
+      "python_version": "3.11"
     },
     "linux-2024": {
       "platform": "linux",
       "module_name": "MayaToolLinux",
-      "maya_version": "2024"
+      "maya_version": "2024",
+      "python_version": "3.10"
     }
   }
 }
@@ -185,7 +191,7 @@ Current repo example:
 Safe migration from the old single-target file:
 
 1. Keep the existing top-level shared fields.
-2. Move target-specific fields such as `platform`, `module_name`, and `maya_version` into `targets.<name>`.
+2. Move target-specific fields such as `platform`, `module_name`, `maya_version`, and `python_version` into `targets.<name>`.
 3. Add `default_target`.
 4. Add optional `.maya-cython-compile.json.target` and `.maya-cython-compile.json.targets.<name>` overrides when one machine switches between multiple targets.
 

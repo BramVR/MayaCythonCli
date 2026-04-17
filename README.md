@@ -1,6 +1,6 @@
 # maya-cython-compile
 
-Windows-first CLI for building Maya Python tools into Maya-compatible Cython extension packages, with explicit named target selection for Maya version and platform combinations.
+CLI for building Maya Python tools into Maya-compatible Cython extension packages, with explicit named target selection for Maya version, platform, and build-Python combinations.
 
 Docs live in [`docs/`](docs/). Start with:
 
@@ -25,7 +25,7 @@ maya-cython-compile --target windows-2025 assemble --force
 maya-cython-compile --target windows-2025 run --ensure-env --force
 ```
 
-Verification, from the repo build env created by `maya-cython-compile create-env`:
+Verification, from the selected target env created by `maya-cython-compile create-env`:
 
 ```powershell
 python -m ruff check src tests
@@ -33,7 +33,7 @@ python -m mypy src tests
 python -m unittest discover -s tests
 ```
 
-If the env is not activated, run the same commands with the `python.exe` under your configured `env_path`.
+If the env is not activated, run the same commands with the `python.exe` under your resolved target `env_path`.
 
 Core files:
 

@@ -45,7 +45,7 @@ Global flags are accepted before or after the subcommand.
 | `--target NAME` | select a named build target |
 | `--json` | emit JSON to stdout |
 | `--verbose` | print spawned subprocess commands to stderr |
-| `--conda-exe PATH` | override Conda executable |
+| `--conda-exe PATH` | override Conda executable or command |
 | `--env-path PATH` | override build env location |
 | `--maya-py PATH` | override `mayapy` path |
 | `--version` | print version and exit |
@@ -59,19 +59,19 @@ Flags that are not implemented:
 
 ### `config show`
 
-Prints the fully resolved config from tracked build metadata, local config, environment variables, and CLI overrides. The payload includes the selected `target`, `available_targets`, and the resolved target `platform`.
+Prints the fully resolved config from tracked build metadata, local config, environment variables, and CLI overrides. The payload includes the selected `target`, `available_targets`, the resolved target `platform`, and the target `python_version` used for Conda env creation.
 
 ### `doctor`
 
-Checks whether the selected target's Conda executable, env path, and `mayapy` path exist, then runs a target-aware `mayapy` probe that reports runtime platform, Python version, include path, and Python library metadata from `sysconfig`.
+Checks whether the selected target's Conda executable, env path, and `mayapy` path exist, then runs a target-aware `mayapy` probe that reports runtime platform, Python version, include path, and Python library metadata from `sysconfig`. The checks include both platform and Python-version matches against the selected target.
 
 ### `create-env`
 
-Creates the local Conda build environment from [../environment.yml](../environment.yml). If the selected target's env already exists, the command treats that as a replace operation and requires `--force`.
+Creates the selected target's Conda build environment from [../environment.yml](../environment.yml). The CLI writes a target-scoped environment file under `build/tmp/<target>/conda-environment.yml`, rewrites its `python=` dependency to the resolved target `python_version`, and then runs Conda against that file. If the selected target's env already exists, the command treats that as a replace operation and requires `--force`.
 
 ### `build`
 
-Builds the selected target's wheel inside the resolved Conda env. It validates the `mayapy` probe, rejects a target platform mismatch, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, and writes the newest wheel to `dist/<target>/`.
+Builds the selected target's wheel inside the resolved Conda env. It validates the `mayapy` probe, rejects a target platform or Python-version mismatch, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, and writes the newest wheel to `dist/<target>/`.
 
 ### `smoke`
 
@@ -109,6 +109,7 @@ Dry-run behavior:
 - it does not change files
 - `run --dry-run` returns one dry-run payload per included step
 - target-aware dry-run payloads include the resolved `target`
+- `create-env --dry-run` also reports the resolved `python_version` and generated environment file path
 
 Doctor behavior:
 

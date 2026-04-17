@@ -21,7 +21,8 @@
     "windows-2025": {
       "platform": "windows",
       "module_name": "MayaTool",
-      "maya_version": "2025"
+      "maya_version": "2025",
+      "python_version": "3.11"
     }
   }
 }

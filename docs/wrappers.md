@@ -23,12 +23,13 @@ Each wrapper:
 - resolves `repoRoot` from the script location
 - sets `PYTHONPATH` to `<repoRoot>/src`
 - forwards `-Target` to CLI `--target` when provided
+- forwards `-EnvPath`, `-MayaPy`, `-ModuleName`, and `-MayaVersion` only when you pass them explicitly
 - forwards the matching safety flags as `-DryRun` and `-Force`
 - dispatches into `python -m maya_cython_compile ...`
 
 Current interpreter fallback order:
 
-1. `<repoRoot>\<EnvPath>\python.exe`
+1. `<repoRoot>\<EnvPath>\python.exe` when `-EnvPath` is provided
 2. `py -3`
 3. `python`
 
@@ -36,13 +37,12 @@ If no interpreter is found, the wrapper throws.
 
 ## Wrapper defaults
 
-Current wrapper defaults match the script parameters, not a separate config layer:
+Wrapper defaults now defer to the Python CLI and repo config:
 
-- `create-conda-env.ps1`: `-EnvPath ".conda/maya-cython-build"`
-- `build-package.ps1`: `-EnvPath ".conda/maya-cython-build"` and `-MayaPy "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"`
-- `smoke-package.ps1`: `-EnvPath ".conda/maya-cython-build"` and `-MayaPy "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"`
-- `assemble-module.ps1`: `-EnvPath ".conda/maya-cython-build"`, `-ModuleName "MayaTool"`, and `-MayaVersion "2025"`
+- no wrapper forces a shared `env_path`
+- no wrapper forces a `mayapy`, `module_name`, or `maya_version` value unless you pass one
+- `-Target <name>` is the normal way to select a named build target explicitly
 
-Use `-Target <name>` when you want a wrapper to select a named build target explicitly.
+Pass `-EnvPath`, `-MayaPy`, `-ModuleName`, or `-MayaVersion` only when you need to override the resolved config for that invocation.
 
 For new behavior, change the Python CLI first, then keep the wrappers as thin delegates.

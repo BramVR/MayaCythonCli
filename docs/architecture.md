@@ -30,6 +30,7 @@ The resolved target defines:
 - distribution name
 - package name and package directory
 - module name and Maya version
+- target Python version for the Conda build env
 - package version
 - compiled modules
 - package data
@@ -47,7 +48,7 @@ It owns:
 - target selection
 - Conda and `mayapy` validation
 - target-aware Maya runtime probing through `mayapy`
-- build env creation
+- build env creation, including target-specific Python pinning
 - destructive cleanup planning through the shared `--dry-run` and `--force` contract
 - temporary target tree generation
 - wheel build execution
@@ -66,6 +67,7 @@ That keeps packaging logic isolated while still generating target-specific build
 
 The pipeline now namespaces mutable outputs by selected target so different Maya and platform builds do not clobber one another:
 
+- build env specs: `build/tmp/<target>/conda-environment.yml`
 - build temp files: `build/tmp/<target>/`
 - built wheels: `dist/<target>/`
 - smoke extraction: `build/smoke/<target>/wheel/`
@@ -75,12 +77,14 @@ The pipeline now namespaces mutable outputs by selected target so different Maya
 
 The pipeline separates build-time Python from Maya runtime validation:
 
-- Conda env - used for `Cython`, `setuptools`, and wheel creation
+- Conda env - used for `Cython`, `setuptools`, and wheel creation, with the interpreter pinned per target
 - `mayapy` - used for runtime metadata discovery via `sysconfig` and for smoke validation
 
 This lets the repo run from a normal Python environment without making `mayapy` the primary tool runner.
 
 The runtime probe is explicit instead of path-inferred. The pipeline executes `mayapy -c ...`, captures a JSON payload with runtime platform, Python version, include path, and library metadata, then validates that payload against the selected target before the build starts.
+
+One shared Conda env is only safe when every target it serves uses the same Python ABI and compatible toolchain dependencies. Because the wheel build runs under the Conda interpreter, the default env layout is target-specific instead of shared.
 
 ## Assembly model
 

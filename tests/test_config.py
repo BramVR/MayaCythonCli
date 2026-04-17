@@ -14,7 +14,7 @@ TMP_ROOT = ROOT / "build" / "test-tmp"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from maya_cython_compile.config import DEFAULT_TARGET_NAME, resolve_config
+from maya_cython_compile.config import DEFAULT_PYTHON_VERSION, DEFAULT_TARGET_NAME, resolve_config
 
 
 def write_build_config(repo_root: Path) -> None:
@@ -26,6 +26,7 @@ def write_build_config(repo_root: Path) -> None:
                 "package_dir": "src/maya_tool",
                 "module_name": "MayaTool",
                 "maya_version": "2025",
+                "python_version": "3.11",
                 "version": "0.1.0",
                 "compiled_modules": ["_cy_logic"],
                 "package_data": ["*.json"],
@@ -62,11 +63,13 @@ def write_multi_target_build_config(repo_root: Path) -> None:
                         "platform": "windows",
                         "module_name": "MayaToolWin",
                         "maya_version": "2025",
+                        "python_version": "3.11",
                     },
                     "linux-2024": {
                         "platform": "linux",
                         "module_name": "MayaToolLinux",
                         "maya_version": "2024",
+                        "python_version": "3.10",
                     },
                 },
             },
@@ -85,18 +88,33 @@ def make_temp_repo(name: str) -> Path:
 
 
 class ConfigTests(unittest.TestCase):
-    def test_resolve_config_uses_home_relative_conda_default(self) -> None:
+    def test_resolve_config_prefers_conda_from_path_and_target_env_default(self) -> None:
         repo_root = make_temp_repo("config-default-conda")
         write_build_config(repo_root)
+        discovered = r"C:\Miniconda3\condabin\conda.exe" if os.name == "nt" else "/opt/miniconda3/bin/conda"
 
-        config = resolve_config(repo_root)
+        with patch("maya_cython_compile.config.shutil.which", return_value=discovered):
+            config = resolve_config(repo_root)
 
         self.assertEqual(config.build.target_name, DEFAULT_TARGET_NAME)
         self.assertEqual(config.build.platform, "windows")
-        self.assertEqual(
-            config.local.conda_exe,
-            Path.home() / "anaconda3" / "condabin" / "conda.bat",
+        self.assertEqual(config.build.python_version, "3.11")
+        self.assertEqual(config.local.conda_exe, discovered)
+        self.assertEqual(config.local.env_path, (repo_root / ".conda" / DEFAULT_TARGET_NAME).resolve())
+
+    def test_resolve_config_uses_platform_default_conda_when_path_lookup_misses(self) -> None:
+        repo_root = make_temp_repo("config-default-conda-platform-fallback")
+        write_build_config(repo_root)
+
+        with patch("maya_cython_compile.config.shutil.which", return_value=None):
+            config = resolve_config(repo_root)
+
+        expected = (
+            str(Path.home() / "anaconda3" / "condabin" / "conda.bat")
+            if os.name == "nt"
+            else "conda"
         )
+        self.assertEqual(config.local.conda_exe, expected)
 
     def test_resolve_config_uses_local_file(self) -> None:
         repo_root = make_temp_repo("config-local-file")
@@ -114,7 +132,7 @@ class ConfigTests(unittest.TestCase):
 
         config = resolve_config(repo_root)
 
-        self.assertEqual(config.local.conda_exe, (repo_root / "tools/conda.bat").resolve())
+        self.assertEqual(config.local.conda_exe, str((repo_root / "tools/conda.bat").resolve()))
         self.assertEqual(config.local.env_path, (repo_root / ".conda/custom-build").resolve())
         self.assertEqual(config.local.maya_py, (repo_root / "maya/bin/mayapy.exe").resolve())
 
@@ -127,6 +145,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.build.target_name, "windows-2025")
         self.assertEqual(config.build.module_name, "MayaToolWin")
         self.assertEqual(config.build.maya_version, "2025")
+        self.assertEqual(config.build.python_version, "3.11")
 
     def test_local_target_overrides_build_default_target(self) -> None:
         repo_root = make_temp_repo("config-local-target")
@@ -141,6 +160,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.build.target_name, "linux-2024")
         self.assertEqual(config.build.platform, "linux")
         self.assertEqual(config.build.module_name, "MayaToolLinux")
+        self.assertEqual(config.build.python_version, "3.10")
 
     def test_target_precedence_cli_over_environment_and_local(self) -> None:
         repo_root = make_temp_repo("config-overrides")
@@ -168,7 +188,7 @@ class ConfigTests(unittest.TestCase):
             )
 
         self.assertEqual(config.build.target_name, "windows-2025")
-        self.assertEqual(str(config.local.conda_exe), r"C:\override\conda.bat")
+        self.assertEqual(config.local.conda_exe, r"C:\override\conda.bat")
         self.assertEqual(str(config.local.env_path), r"C:\override\build-env")
         self.assertEqual(str(config.local.maya_py), r"C:\override\mayapy.exe")
 
@@ -195,6 +215,17 @@ class ConfigTests(unittest.TestCase):
 
         config = resolve_config(repo_root)
 
-        self.assertEqual(config.local.conda_exe, (repo_root / "tools/root-conda").resolve())
+        self.assertEqual(config.local.conda_exe, str((repo_root / "tools/root-conda").resolve()))
         self.assertEqual(config.local.env_path, (repo_root / ".conda/linux-build").resolve())
         self.assertEqual(config.local.maya_py, (repo_root / "maya/linux/mayapy").resolve())
+
+    def test_resolve_config_uses_default_python_version_when_not_declared(self) -> None:
+        repo_root = make_temp_repo("config-default-python-version")
+        write_build_config(repo_root)
+        payload = json.loads((repo_root / "build-config.json").read_text(encoding="utf-8"))
+        payload.pop("python_version", None)
+        (repo_root / "build-config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        config = resolve_config(repo_root)
+
+        self.assertEqual(config.build.python_version, DEFAULT_PYTHON_VERSION)

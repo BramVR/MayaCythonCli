@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,10 +36,12 @@ class MayaRuntimeProbe:
     probe_succeeded: bool
     error: str | None = None
     target_platform: str | None = None
+    target_python_version: str | None = None
     runtime_platform: str | None = None
     platform_matches_target: bool | None = None
     python_executable: str | None = None
     python_version: str | None = None
+    python_matches_target: bool | None = None
     python_prefix: str | None = None
     python_base_prefix: str | None = None
     sys_platform: str | None = None
@@ -57,6 +60,9 @@ class MayaRuntimeProbe:
 
     def doctor_platform_check(self) -> bool:
         return self.platform_matches_target is True if self.target_platform else self.probe_succeeded
+
+    def doctor_python_check(self) -> bool:
+        return self.python_matches_target is True if self.target_python_version else self.probe_succeeded
 
     def build_env(self) -> dict[str, str]:
         return {
@@ -121,15 +127,20 @@ def show_config(config: ResolvedConfig) -> dict[str, Any]:
 
 
 def doctor(config: ResolvedConfig) -> dict[str, Any]:
-    maya = probe_maya_runtime(config.local.maya_py, target_platform=config.build.platform)
+    maya = probe_maya_runtime(
+        config.local.maya_py,
+        target_platform=config.build.platform,
+        target_python_version=config.build.python_version,
+    )
     return {
         "config": show_config(config),
         "checks": {
-            "conda_exe_exists": config.local.conda_exe.exists(),
+            "conda_exe_exists": executable_exists(config.local.conda_exe),
             "env_exists": config.local.env_path.exists(),
             "maya_py_exists": config.local.maya_py.exists(),
             "maya_probe_ok": maya.probe_succeeded,
             "maya_platform_matches_target": maya.doctor_platform_check(),
+            "maya_python_matches_target": maya.doctor_python_check(),
             "maya_include_exists": maya.include_dir is not None,
             "maya_lib_exists": maya.library_file is not None,
         },
@@ -144,10 +155,11 @@ def create_env(
     dry_run: bool = False,
     force: bool = False,
 ) -> dict[str, Any]:
-    if not config.local.conda_exe.exists():
+    if not executable_exists(config.local.conda_exe):
         raise CliError(f"Conda was not found at {config.local.conda_exe}", DEPENDENCY_ERROR)
 
     deletion_targets = plan_create_env_refresh(config)
+    environment_file = target_env_spec_path(config)
     command = conda_command(
         config.local.conda_exe,
         "env",
@@ -157,7 +169,7 @@ def create_env(
     )
     if deletion_targets:
         command.append("--force")
-    command.extend(["--file", str(config.repo_root / "environment.yml")])
+    command.extend(["--file", str(environment_file)])
 
     if dry_run:
         return render_dry_run(
@@ -167,6 +179,8 @@ def create_env(
             details={
                 "target": config.build.target_name,
                 "env_path": str(config.local.env_path),
+                "python_version": config.build.python_version,
+                "environment_file": str(environment_file),
             },
         )
 
@@ -175,6 +189,7 @@ def create_env(
         deletion_targets,
         force=force,
     )
+    write_target_environment_file(config, environment_file)
     run_command(command, cwd=config.repo_root, verbose=verbose, error_code=DEPENDENCY_ERROR)
     return {"env_path": str(config.local.env_path)}
 
@@ -192,7 +207,11 @@ def build(
             DEPENDENCY_ERROR,
         )
 
-    maya = probe_maya_runtime(config.local.maya_py, target_platform=config.build.platform)
+    maya = probe_maya_runtime(
+        config.local.maya_py,
+        target_platform=config.build.platform,
+        target_python_version=config.build.python_version,
+    )
     ensure_maya_build_runtime(maya, config.local.maya_py)
 
     deletion_targets = plan_build_cleanup(config)
@@ -424,11 +443,17 @@ def run_pipeline(
     return steps
 
 
-def probe_maya_runtime(maya_py: Path, *, target_platform: str | None = None) -> MayaRuntimeProbe:
+def probe_maya_runtime(
+    maya_py: Path,
+    *,
+    target_platform: str | None = None,
+    target_python_version: str | None = None,
+) -> MayaRuntimeProbe:
     if not maya_py.exists():
         return _runtime_probe_result(
             maya_py=maya_py,
             target_platform=target_platform,
+            target_python_version=target_python_version,
             error=f"mayapy not found: {maya_py}",
         )
 
@@ -445,6 +470,7 @@ def probe_maya_runtime(maya_py: Path, *, target_platform: str | None = None) -> 
         return _runtime_probe_result(
             maya_py=maya_py,
             target_platform=target_platform,
+            target_python_version=target_python_version,
             error=message,
         )
 
@@ -454,10 +480,12 @@ def probe_maya_runtime(maya_py: Path, *, target_platform: str | None = None) -> 
         return _runtime_probe_result(
             maya_py=maya_py,
             target_platform=target_platform,
+            target_python_version=target_python_version,
             error=f"mayapy probe returned invalid JSON: {exc}",
         )
 
     runtime_platform = payload.get("runtime_platform")
+    python_version = payload.get("python_version")
     config_vars = payload.get("config_vars", {})
     include_dir = _resolve_existing_path(
         payload.get("include_dir"),
@@ -471,15 +499,20 @@ def probe_maya_runtime(maya_py: Path, *, target_platform: str | None = None) -> 
     platform_matches_target = None
     if target_platform and runtime_platform:
         platform_matches_target = runtime_platform == target_platform
+    python_matches_target = None
+    if target_python_version and python_version:
+        python_matches_target = python_version_matches_target(python_version, target_python_version)
 
     return MayaRuntimeProbe(
         maya_py=str(maya_py),
         probe_succeeded=True,
         target_platform=target_platform,
+        target_python_version=target_python_version,
         runtime_platform=runtime_platform,
         platform_matches_target=platform_matches_target,
         python_executable=payload.get("maya_py"),
-        python_version=payload.get("python_version"),
+        python_version=python_version,
+        python_matches_target=python_matches_target,
         python_prefix=payload.get("python_prefix"),
         python_base_prefix=payload.get("python_base_prefix"),
         sys_platform=payload.get("sys_platform"),
@@ -511,6 +544,14 @@ def ensure_maya_build_runtime(maya: MayaRuntimeProbe, maya_py: Path) -> None:
             ),
             DEPENDENCY_ERROR,
         )
+    if maya.python_matches_target is False:
+        raise CliError(
+            (
+                f"Configured target Python {maya.target_python_version} does not match "
+                f"mayapy runtime {maya.python_version}: {maya_py}"
+            ),
+            DEPENDENCY_ERROR,
+        )
     if not maya.include_dir or not maya.library_dir or not maya.library_name or not maya.library_file:
         raise CliError(f"Could not resolve Maya Python runtime from {maya_py}", DEPENDENCY_ERROR)
 
@@ -519,6 +560,7 @@ def _runtime_probe_result(
     *,
     maya_py: Path,
     target_platform: str | None,
+    target_python_version: str | None,
     error: str,
 ) -> MayaRuntimeProbe:
     return MayaRuntimeProbe(
@@ -526,6 +568,7 @@ def _runtime_probe_result(
         probe_succeeded=False,
         error=error,
         target_platform=target_platform,
+        target_python_version=target_python_version,
     )
 
 
@@ -650,6 +693,10 @@ def target_temp_root(config: ResolvedConfig) -> Path:
     return config.repo_root / "build" / "tmp" / config.build.target_name
 
 
+def target_env_spec_path(config: ResolvedConfig) -> Path:
+    return target_temp_root(config) / "conda-environment.yml"
+
+
 def target_dist_dir(config: ResolvedConfig) -> Path:
     return config.repo_root / "dist" / config.build.target_name
 
@@ -662,10 +709,16 @@ def target_module_root(config: ResolvedConfig, module_name: str) -> Path:
     return config.repo_root / "dist" / "module" / config.build.target_name / module_name
 
 
-def conda_command(conda_exe: Path, *args: str) -> list[str]:
-    if conda_exe.suffix.lower() in {".bat", ".cmd"}:
-        return ["cmd.exe", "/c", str(conda_exe), *args]
-    return [str(conda_exe), *args]
+def conda_command(conda_exe: str, *args: str) -> list[str]:
+    resolved = resolve_executable_for_spawn(conda_exe)
+    if Path(resolved).suffix.lower() in {".bat", ".cmd"}:
+        if os.name != "nt":
+            raise CliError(
+                f"Batch Conda entrypoints are only supported on Windows: {resolved}",
+                DEPENDENCY_ERROR,
+            )
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", resolved, *args]
+    return [resolved, *args]
 
 
 def module_platform_token(platform: str) -> str:
@@ -674,6 +727,66 @@ def module_platform_token(platform: str) -> str:
         "linux": "linux",
         "macos": "mac",
     }[platform]
+
+
+def executable_exists(executable: str) -> bool:
+    if _looks_like_path(executable):
+        return Path(executable).exists()
+    return shutil.which(executable) is not None
+
+
+def resolve_executable_for_spawn(executable: str) -> str:
+    if _looks_like_path(executable):
+        return executable
+    discovered = shutil.which(executable)
+    return discovered or executable
+
+
+def render_target_environment_yaml(base_environment: str, python_version: str) -> str:
+    lines = base_environment.splitlines()
+    rendered_line = f"  - python={python_version}"
+    replaced = False
+    for index, line in enumerate(lines):
+        if re.match(r"^\s*-\s*python\b.*$", line):
+            lines[index] = rendered_line
+            replaced = True
+            break
+    if not replaced:
+        try:
+            dependencies_index = next(index for index, line in enumerate(lines) if line.strip() == "dependencies:")
+        except StopIteration:
+            lines.extend(["dependencies:", rendered_line])
+        else:
+            lines.insert(dependencies_index + 1, rendered_line)
+    return "\n".join(lines) + "\n"
+
+
+def write_target_environment_file(config: ResolvedConfig, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    base_environment = (config.repo_root / "environment.yml").read_text(encoding="utf-8")
+    destination.write_text(
+        render_target_environment_yaml(base_environment, config.build.python_version),
+        encoding="utf-8",
+    )
+
+
+def python_version_matches_target(runtime_version: str, target_version: str) -> bool:
+    runtime_parts = normalized_python_version(runtime_version)
+    target_parts = normalized_python_version(target_version)
+    if not runtime_parts or not target_parts:
+        return runtime_version == target_version
+    return runtime_parts[: len(target_parts)] == target_parts
+
+
+def normalized_python_version(raw_value: str) -> tuple[int, ...]:
+    match = re.match(r"^\s*(\d+(?:\.\d+)*)", raw_value)
+    if match is None:
+        return ()
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def _looks_like_path(raw_value: str) -> bool:
+    return Path(raw_value).is_absolute() or raw_value.startswith(".") or "/" in raw_value or "\\" in raw_value
 
 
 def delete_paths(paths: list[DeletionTarget]) -> None:

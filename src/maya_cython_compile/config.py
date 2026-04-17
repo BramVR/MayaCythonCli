@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CONDA_EXE = str(Path.home() / "anaconda3" / "condabin" / "conda.bat")
+DEFAULT_CONDA_COMMAND = "conda"
 DEFAULT_MAYA_PY = r"C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
-DEFAULT_ENV_PATH = ".conda/maya-cython-build"
+DEFAULT_ENV_DIR = ".conda"
+DEFAULT_PYTHON_VERSION = "3.11"
 DEFAULT_CONFIG_NAME = ".maya-cython-compile.json"
 DEFAULT_TARGET_NAME = "default"
 PLATFORM_ALIASES = {
@@ -35,6 +37,7 @@ class SmokeConfig:
 class BuildConfig:
     target_name: str
     platform: str
+    python_version: str
     distribution_name: str
     package_name: str
     package_dir: str
@@ -48,7 +51,7 @@ class BuildConfig:
 
 @dataclass(slots=True)
 class LocalConfig:
-    conda_exe: Path
+    conda_exe: str
     env_path: Path
     maya_py: Path
     config_path: Path
@@ -80,6 +83,7 @@ def load_build_config(
         BuildConfig(
             target_name=resolved_target,
             platform=_normalize_platform(build_payload.get("platform", "windows")),
+            python_version=str(build_payload.get("python_version", DEFAULT_PYTHON_VERSION)),
             distribution_name=build_payload["distribution_name"],
             package_name=build_payload["package_name"],
             package_dir=build_payload["package_dir"],
@@ -120,13 +124,13 @@ def resolve_config(
     )
     target_payload = _local_target_payload(file_payload, build.target_name)
 
-    resolved_conda = _resolve_path(
+    resolved_conda = _resolve_executable(
         repo_root,
         conda_exe
         or os.environ.get("MAYA_CYTHON_COMPILE_CONDA_EXE")
         or target_payload.get("conda_exe")
         or file_payload.get("conda_exe")
-        or DEFAULT_CONDA_EXE,
+        or _default_conda_exe(),
     )
     resolved_env = _resolve_path(
         repo_root,
@@ -134,7 +138,7 @@ def resolve_config(
         or os.environ.get("MAYA_CYTHON_COMPILE_ENV_PATH")
         or target_payload.get("env_path")
         or file_payload.get("env_path")
-        or DEFAULT_ENV_PATH,
+        or _default_env_path(build.target_name),
     )
     resolved_maya_py = _resolve_path(
         repo_root,
@@ -165,7 +169,8 @@ def as_dict(config: ResolvedConfig) -> dict[str, Any]:
         "target": config.build.target_name,
         "available_targets": list(config.available_targets),
         "platform": config.build.platform,
-        "conda_exe": str(config.local.conda_exe),
+        "python_version": config.build.python_version,
+        "conda_exe": config.local.conda_exe,
         "env_path": str(config.local.env_path),
         "maya_py": str(config.local.maya_py),
         "distribution_name": config.build.distribution_name,
@@ -193,6 +198,40 @@ def _resolve_path(repo_root: Path, raw_path: str) -> Path:
     if path.is_absolute():
         return path
     return (repo_root / path).resolve()
+
+
+def _resolve_executable(repo_root: Path, raw_value: str) -> str:
+    path = Path(raw_value)
+    if path.is_absolute():
+        return str(path)
+    if _is_explicit_relative_path(raw_value):
+        return str((repo_root / path).resolve())
+
+    discovered = shutil.which(raw_value)
+    if discovered:
+        return str(Path(discovered))
+
+    candidate = (repo_root / path).resolve()
+    if candidate.exists():
+        return str(candidate)
+    return raw_value
+
+
+def _default_conda_exe() -> str:
+    discovered = shutil.which(DEFAULT_CONDA_COMMAND)
+    if discovered:
+        return discovered
+    if os.name == "nt":
+        return str(Path.home() / "anaconda3" / "condabin" / "conda.bat")
+    return DEFAULT_CONDA_COMMAND
+
+
+def _default_env_path(target_name: str) -> str:
+    return f"{DEFAULT_ENV_DIR}/{target_name}"
+
+
+def _is_explicit_relative_path(raw_value: str) -> bool:
+    return raw_value.startswith(".") or "/" in raw_value or "\\" in raw_value
 
 
 def _available_targets(payload: dict[str, Any]) -> tuple[str, ...]:

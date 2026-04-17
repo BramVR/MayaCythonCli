@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -14,7 +15,14 @@ if str(SRC) not in sys.path:
 
 from maya_cython_compile.config import resolve_config
 from maya_cython_compile.errors import DEPENDENCY_ERROR, CliError
-from maya_cython_compile.pipeline import build, ensure_maya_build_runtime, probe_maya_runtime
+from maya_cython_compile.pipeline import (
+    build,
+    conda_command,
+    ensure_maya_build_runtime,
+    probe_maya_runtime,
+    python_version_matches_target,
+    render_target_environment_yaml,
+)
 from probe_fixtures import make_probe_completed_process, make_temp_repo, write_fake_maya_probe_layout
 
 
@@ -39,11 +47,13 @@ def write_multi_target_build_config(repo_root: Path) -> None:
                         "platform": "windows",
                         "module_name": "MayaToolWin",
                         "maya_version": "2025",
+                        "python_version": "3.11",
                     },
                     "linux-2024": {
                         "platform": "linux",
                         "module_name": "MayaToolLinux",
                         "maya_version": "2024",
+                        "python_version": "3.11",
                     },
                 },
             },
@@ -70,12 +80,18 @@ class PipelineTests(unittest.TestCase):
                 runtime_platform="linux",
             ),
         ):
-            payload = probe_maya_runtime(mayapy, target_platform="linux")
+            payload = probe_maya_runtime(
+                mayapy,
+                target_platform="linux",
+                target_python_version="3.11",
+            )
 
         self.assertTrue(payload.probe_succeeded)
         self.assertEqual(payload.target_platform, "linux")
+        self.assertEqual(payload.target_python_version, "3.11")
         self.assertEqual(payload.runtime_platform, "linux")
         self.assertTrue(payload.platform_matches_target)
+        self.assertTrue(payload.python_matches_target)
         self.assertEqual(payload.include_dir, str(include_dir))
         self.assertEqual(payload.library_dir, str(library_file.parent))
         self.assertEqual(payload.library_name, "python3.11")
@@ -99,7 +115,11 @@ class PipelineTests(unittest.TestCase):
                 runtime_platform="linux",
             ),
         ):
-            payload = probe_maya_runtime(mayapy, target_platform="windows")
+            payload = probe_maya_runtime(
+                mayapy,
+                target_platform="windows",
+                target_python_version="3.11",
+            )
 
         self.assertFalse(payload.platform_matches_target)
         with self.assertRaises(CliError) as exc:
@@ -107,6 +127,35 @@ class PipelineTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.exit_code, DEPENDENCY_ERROR)
         self.assertIn("does not match mayapy runtime linux", str(exc.exception))
+
+    def test_ensure_maya_build_runtime_rejects_target_python_mismatch(self) -> None:
+        repo_root = make_temp_repo("pipeline-probe-python-mismatch")
+        mayapy, include_dir, library_file = write_fake_maya_probe_layout(
+            repo_root,
+            library_filename="libpython3.11.so",
+        )
+
+        with mock.patch(
+            "maya_cython_compile.pipeline.subprocess.run",
+            return_value=make_probe_completed_process(
+                mayapy=mayapy,
+                include_dir=include_dir,
+                library_file=library_file,
+                runtime_platform="linux",
+            ),
+        ):
+            payload = probe_maya_runtime(
+                mayapy,
+                target_platform="linux",
+                target_python_version="3.10",
+            )
+
+        self.assertFalse(payload.python_matches_target)
+        with self.assertRaises(CliError) as exc:
+            ensure_maya_build_runtime(payload, mayapy)
+
+        self.assertEqual(exc.exception.exit_code, DEPENDENCY_ERROR)
+        self.assertIn("Configured target Python 3.10 does not match mayapy runtime 3.11.9", str(exc.exception))
 
     def test_build_exports_probe_metadata_to_build_environment(self) -> None:
         repo_root = make_temp_repo("pipeline-build-env")
@@ -168,3 +217,33 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(captured_env["MAYA_PYTHON_VERSION"], "3.11.9")
         self.assertEqual(captured_env["MAYA_PYTHON_EXT_SUFFIX"], ".so")
         self.assertEqual(captured_env["MAYA_PYTHON_SOABI"], "cpython-311")
+
+    def test_render_target_environment_yaml_replaces_python_dependency(self) -> None:
+        rendered = render_target_environment_yaml(
+            "name: maya-cython-build\nchannels:\n  - defaults\ndependencies:\n  - python=3.11\n  - pip\n",
+            "3.10",
+        )
+
+        self.assertIn("  - python=3.10\n", rendered)
+        self.assertNotIn("  - python=3.11\n", rendered)
+
+    def test_python_version_matches_target_accepts_prefix_match(self) -> None:
+        self.assertTrue(python_version_matches_target("3.11.9", "3.11"))
+        self.assertFalse(python_version_matches_target("3.11.9", "3.10"))
+
+    def test_conda_command_uses_batch_launcher_on_windows(self) -> None:
+        if os.name != "nt":
+            self.skipTest("Windows batch launcher requires Windows path semantics.")
+
+        with mock.patch.dict("maya_cython_compile.pipeline.os.environ", {"COMSPEC": r"C:\Windows\System32\cmd.exe"}):
+            command = conda_command(r"C:\Miniconda3\condabin\conda.bat", "env", "create")
+
+        self.assertEqual(
+            command,
+            [r"C:\Windows\System32\cmd.exe", "/d", "/c", r"C:\Miniconda3\condabin\conda.bat", "env", "create"],
+        )
+
+    def test_conda_command_runs_non_batch_executable_directly(self) -> None:
+        command = conda_command("/opt/miniconda3/bin/conda", "run", "--prefix", "/tmp/env")
+
+        self.assertEqual(command, ["/opt/miniconda3/bin/conda", "run", "--prefix", "/tmp/env"])

@@ -107,14 +107,14 @@ class ExitCodeTests(unittest.TestCase):
 
         with redirect_stderr(stderr):
             result = run_command(
-                ["cmd.exe", "/c", "echo", "hello"],
+                [sys.executable, "-c", "print('hello')"],
                 cwd=repo_root,
                 verbose=True,
                 error_code=SMOKE_ERROR,
             )
 
         self.assertEqual(result.returncode, 0)
-        self.assertIn("$ cmd.exe /c echo hello", stderr.getvalue())
+        self.assertIn(f"$ {sys.executable} -c print('hello')", stderr.getvalue())
 
     def test_run_command_maps_interrupted_subprocess_to_interrupt_exit_code(self) -> None:
         repo_root = make_temp_repo("cli-interrupted-subprocess")
@@ -130,7 +130,11 @@ class ExitCodeTests(unittest.TestCase):
             return_value=FakeCompletedProcess(0xC000013A),
         ):
             with self.assertRaises(CliError) as exc:
-                run_command(["cmd.exe", "/c", "timeout", "/t", "10"], cwd=repo_root, error_code=SMOKE_ERROR)
+                run_command(
+                    [sys.executable, "-c", "import time; time.sleep(10)"],
+                    cwd=repo_root,
+                    error_code=SMOKE_ERROR,
+                )
 
         self.assertEqual(exc.exception.exit_code, INTERRUPTED_ERROR)
         self.assertEqual(str(exc.exception), "Interrupted.")
