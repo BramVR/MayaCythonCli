@@ -20,7 +20,12 @@ That split avoids coupling the builder and the thing being built into one artifa
 
 Tracked build metadata lives in [../build-config.json](../build-config.json).
 
-It defines:
+It can be expressed either as:
+
+- a legacy flat single-target config
+- a named-target config with shared top-level build fields plus `default_target` and `targets`
+
+The resolved target defines:
 
 - distribution name
 - package name and package directory
@@ -29,6 +34,7 @@ It defines:
 - compiled modules
 - package data
 - smoke settings
+- target platform for Maya module assembly
 
 Local machine paths are resolved separately through CLI flags, environment variables, repo-local config, and built-in defaults. See [config.md](config.md).
 
@@ -38,6 +44,7 @@ The real build flow lives in [../src/maya_cython_compile/pipeline.py](../src/may
 
 It owns:
 
+- target selection
 - Conda and `mayapy` validation
 - Maya include and import-lib discovery
 - build env creation
@@ -51,9 +58,18 @@ PowerShell wrappers under [../scripts](../scripts) are compatibility entrypoints
 
 ## Temporary build tree
 
-Wheel builds do not run from the tracked source tree directly. The CLI prepares a disposable build root under `build/target-build/` through [../src/maya_cython_compile/target_builder.py](../src/maya_cython_compile/target_builder.py).
+Wheel builds do not run from the tracked source tree directly. The CLI prepares a disposable build root under `build/target-build/<target>/` through [../src/maya_cython_compile/target_builder.py](../src/maya_cython_compile/target_builder.py).
 
 That keeps packaging logic isolated while still generating target-specific build files.
+
+## Target-scoped outputs
+
+The pipeline now namespaces mutable outputs by selected target so different Maya and platform builds do not clobber one another:
+
+- build temp files: `build/tmp/<target>/`
+- built wheels: `dist/<target>/`
+- smoke extraction: `build/smoke/<target>/wheel/`
+- assembled module payloads: `dist/module/<target>/<ModuleName>/`
 
 ## Runtime split
 
@@ -68,7 +84,7 @@ This lets the repo run from a normal Python environment without making `mayapy` 
 
 The wheel is the intermediate artifact. The final Maya module payload is assembled into:
 
-- `dist/module/<ModuleName>/contents/scripts/`
-- `dist/module/<ModuleName>/<ModuleName>.mod`
+- `dist/module/<target>/<ModuleName>/contents/scripts/`
+- `dist/module/<target>/<ModuleName>/<ModuleName>.mod`
 
-Assembly skips wheel metadata directories ending in `.dist-info` and `.data`.
+Assembly skips wheel metadata directories ending in `.dist-info` and `.data`, and the `.mod` file's `PLATFORM:` token is derived from the selected target platform instead of being hardcoded to Windows.

@@ -17,6 +17,7 @@ BOOL_GLOBAL_FLAGS = {"--json", "--verbose", "--version"}
 VALUE_GLOBAL_FLAGS = {
     "--repo-root",
     "--config",
+    "--target",
     "--conda-exe",
     "--env-path",
     "--maya-py",
@@ -35,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repo-root", default=".", help="Repo root used for config and outputs.")
     parser.add_argument("--config", help="Optional local config file path.")
+    parser.add_argument("--target", help="Select a named build target.")
     parser.add_argument("--json", action="store_true", help="Emit JSON to stdout.")
     parser.add_argument("--verbose", action="store_true", help="Print subprocess commands to stderr.")
     parser.add_argument("--conda-exe", help="Override Conda executable path.")
@@ -115,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         config = resolve_config(
             Path(args.repo_root),
             config_path=args.config,
+            target=args.target,
             conda_exe=args.conda_exe,
             env_path=args.env_path,
             maya_py=args.maya_py,

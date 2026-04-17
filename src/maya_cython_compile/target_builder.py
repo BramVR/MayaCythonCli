@@ -8,7 +8,7 @@ from .config import ResolvedConfig
 
 
 def prepare_build_tree(config: ResolvedConfig) -> Path:
-    build_root = config.repo_root / "build" / "target-build"
+    build_root = config.repo_root / "build" / "target-build" / config.build.target_name
 
     package_source = config.repo_root / config.build.package_dir
     package_target = build_root / config.build.package_dir
@@ -18,6 +18,8 @@ def prepare_build_tree(config: ResolvedConfig) -> Path:
     (build_root / "build-config.json").write_text(
         json.dumps(
             {
+                "target_name": config.build.target_name,
+                "platform": config.build.platform,
                 "distribution_name": config.build.distribution_name,
                 "package_name": config.build.package_name,
                 "package_dir": config.build.package_dir,

@@ -27,9 +27,10 @@ If the env is not activated, run the same commands with the `python.exe` under y
 
 ## Build-path verification
 
-When you are changing pipeline behavior, also validate the command surface you touched:
+When you are changing pipeline behavior, also validate the command surface you touched for a representative target:
 
 ```powershell
-maya-cython-compile doctor
-maya-cython-compile run --dry-run
+maya-cython-compile --target windows-2025 config show
+maya-cython-compile --target windows-2025 doctor
+maya-cython-compile --target windows-2025 run --dry-run
 ```

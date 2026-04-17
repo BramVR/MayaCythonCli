@@ -45,6 +45,41 @@ def write_build_config(repo_root: Path) -> None:
     )
 
 
+def write_multi_target_build_config(repo_root: Path) -> None:
+    (repo_root / "build-config.json").write_text(
+        json.dumps(
+            {
+                "distribution_name": "maya-tool",
+                "package_name": "maya_tool",
+                "package_dir": "src/maya_tool",
+                "version": "0.1.0",
+                "compiled_modules": ["_cy_logic"],
+                "package_data": ["*.json"],
+                "smoke": {
+                    "callable": "show_ui",
+                    "compiled_modules": ["_cy_logic"],
+                    "resource_check": "tool_manifest.json",
+                },
+                "default_target": "windows-2025",
+                "targets": {
+                    "windows-2025": {
+                        "platform": "windows",
+                        "module_name": "MayaToolWin",
+                        "maya_version": "2025",
+                    },
+                    "linux-2024": {
+                        "platform": "linux",
+                        "module_name": "MayaToolLinux",
+                        "maya_version": "2024",
+                    },
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def make_temp_repo(name: str) -> Path:
     repo_root = TMP_ROOT / name
     if repo_root.exists():
@@ -53,8 +88,8 @@ def make_temp_repo(name: str) -> Path:
     return repo_root
 
 
-def write_fake_wheel(repo_root: Path) -> Path:
-    dist_dir = repo_root / "dist"
+def write_fake_wheel(repo_root: Path, *, target_name: str = "default") -> Path:
+    dist_dir = repo_root / "dist" / target_name
     dist_dir.mkdir(parents=True, exist_ok=True)
     wheel_path = dist_dir / "maya_tool-0.1.0-py3-none-any.whl"
     package_root = SRC / "maya_tool"
@@ -102,6 +137,8 @@ class CliTests(unittest.TestCase):
             [
                 "--repo-root",
                 "C:/repo",
+                "--target",
+                "linux-2024",
                 "--maya-py",
                 "C:/Maya/bin/mayapy.exe",
                 "run",
@@ -113,6 +150,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.command, "run")
         self.assertTrue(args.ensure_env)
         self.assertTrue(args.skip_smoke)
+        self.assertEqual(args.target, "linux-2024")
         self.assertEqual(args.maya_py, "C:/Maya/bin/mayapy.exe")
 
     def test_build_parser_parses_safety_flags(self) -> None:
@@ -126,20 +164,22 @@ class CliTests(unittest.TestCase):
 
     def test_main_config_show_json(self) -> None:
         repo_root = make_temp_repo("cli-config-show")
-        write_build_config(repo_root)
+        write_multi_target_build_config(repo_root)
         stdout = io.StringIO()
         with redirect_stdout(stdout):
-            exit_code = main(["--repo-root", str(repo_root), "config", "show", "--json"])
+            exit_code = main(["--repo-root", str(repo_root), "--target", "linux-2024", "config", "show", "--json"])
 
         self.assertEqual(exit_code, 0)
         payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["config"]["target"], "linux-2024")
+        self.assertEqual(payload["config"]["platform"], "linux")
         self.assertEqual(payload["config"]["package_name"], "maya_tool")
-        self.assertEqual(payload["config"]["module_name"], "MayaTool")
+        self.assertEqual(payload["config"]["module_name"], "MayaToolLinux")
 
     def test_main_smoke_json_with_fake_wheel(self) -> None:
         repo_root = make_temp_repo("cli-smoke")
-        write_build_config(repo_root)
-        write_fake_wheel(repo_root)
+        write_multi_target_build_config(repo_root)
+        write_fake_wheel(repo_root, target_name="linux-2024")
         stdout = io.StringIO()
 
         with redirect_stdout(stdout):
@@ -147,6 +187,8 @@ class CliTests(unittest.TestCase):
                 [
                     "--repo-root",
                     str(repo_root),
+                    "--target",
+                    "linux-2024",
                     "smoke",
                     "--json",
                     "--maya-py",
@@ -161,7 +203,7 @@ class CliTests(unittest.TestCase):
 
     def test_main_create_env_dry_run_json_shows_refresh(self) -> None:
         repo_root = make_temp_repo("cli-create-env-dry-run")
-        write_build_config(repo_root)
+        write_multi_target_build_config(repo_root)
         env_path = repo_root / ".conda" / "maya-cython-build"
         env_path.mkdir(parents=True, exist_ok=True)
         stdout = io.StringIO()
@@ -188,12 +230,13 @@ class CliTests(unittest.TestCase):
 
     def test_main_build_dry_run_json_lists_cleanup_targets(self) -> None:
         repo_root = make_temp_repo("cli-build-dry-run")
-        write_build_config(repo_root)
+        write_multi_target_build_config(repo_root)
         env_path = repo_root / ".conda" / "maya-cython-build"
         env_path.mkdir(parents=True, exist_ok=True)
         mayapy = write_fake_maya_runtime(repo_root)
-        (repo_root / "build" / "target-build").mkdir(parents=True, exist_ok=True)
-        (repo_root / "build" / "tmp").mkdir(parents=True, exist_ok=True)
+        (repo_root / "build" / "target-build" / "linux-2024").mkdir(parents=True, exist_ok=True)
+        (repo_root / "build" / "tmp" / "linux-2024").mkdir(parents=True, exist_ok=True)
+        (repo_root / "dist" / "linux-2024").mkdir(parents=True, exist_ok=True)
         (repo_root / "maya_tool.egg-info").mkdir(parents=True, exist_ok=True)
         stdout = io.StringIO()
 
@@ -202,6 +245,8 @@ class CliTests(unittest.TestCase):
                 [
                     "--repo-root",
                     str(repo_root),
+                    "--target",
+                    "linux-2024",
                     "--env-path",
                     str(env_path),
                     "--maya-py",
@@ -215,17 +260,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         payload = json.loads(stdout.getvalue())
         deleted_paths = {item["path"] for item in payload["delete"]}
-        self.assertIn(str(repo_root / "build" / "target-build"), deleted_paths)
-        self.assertIn(str(repo_root / "build" / "tmp"), deleted_paths)
+        self.assertEqual(payload["target"], "linux-2024")
+        self.assertIn(str(repo_root / "build" / "target-build" / "linux-2024"), deleted_paths)
+        self.assertIn(str(repo_root / "build" / "tmp" / "linux-2024"), deleted_paths)
+        self.assertIn(str(repo_root / "dist" / "linux-2024"), deleted_paths)
         self.assertIn(str(repo_root / "maya_tool.egg-info"), deleted_paths)
 
     def test_main_build_requires_force_without_prompt_when_cleanup_targets_exist(self) -> None:
         repo_root = make_temp_repo("cli-build-needs-force")
-        write_build_config(repo_root)
+        write_multi_target_build_config(repo_root)
         env_path = repo_root / ".conda" / "maya-cython-build"
         env_path.mkdir(parents=True, exist_ok=True)
         mayapy = write_fake_maya_runtime(repo_root)
-        (repo_root / "build" / "target-build").mkdir(parents=True, exist_ok=True)
+        (repo_root / "build" / "target-build" / "windows-2025").mkdir(parents=True, exist_ok=True)
         stderr = io.StringIO()
 
         with redirect_stderr(stderr), mock.patch("builtins.input", side_effect=AssertionError("stdin not allowed")):
@@ -233,6 +280,8 @@ class CliTests(unittest.TestCase):
                 [
                     "--repo-root",
                     str(repo_root),
+                    "--target",
+                    "windows-2025",
                     "--env-path",
                     str(env_path),
                     "--maya-py",

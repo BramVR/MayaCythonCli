@@ -1,4 +1,5 @@
 param(
+    [string]$Target = "",
     [string]$EnvPath = ".conda/maya-cython-build",
     [switch]$DryRun,
     [switch]$Force
@@ -17,19 +18,25 @@ else {
 $localPython = Join-Path $resolvedEnvPath "python.exe"
 
 if (Test-Path $localPython) {
-    & $localPython -m maya_cython_compile create-env --repo-root $repoRoot --env-path $EnvPath @(
+    & $localPython -m maya_cython_compile create-env --repo-root $repoRoot @(
+        if ($Target) { "--target"; $Target }
+        "--env-path"; $EnvPath
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )
 }
 elseif ($py) {
-    & $py.Source -3 -m maya_cython_compile create-env --repo-root $repoRoot --env-path $EnvPath @(
+    & $py.Source -3 -m maya_cython_compile create-env --repo-root $repoRoot @(
+        if ($Target) { "--target"; $Target }
+        "--env-path"; $EnvPath
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )
 }
 elseif ($python) {
-    & $python.Source -m maya_cython_compile create-env --repo-root $repoRoot --env-path $EnvPath @(
+    & $python.Source -m maya_cython_compile create-env --repo-root $repoRoot @(
+        if ($Target) { "--target"; $Target }
+        "--env-path"; $EnvPath
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )

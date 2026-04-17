@@ -1,6 +1,6 @@
 # maya-cython-compile
 
-Windows-first CLI for building Maya Python tools into Maya-compatible Cython extension packages.
+Windows-first CLI for building Maya Python tools into Maya-compatible Cython extension packages, with explicit named target selection for Maya version and platform combinations.
 
 Docs live in [`docs/`](docs/). Start with:
 
@@ -14,14 +14,15 @@ Short version:
 
 ```powershell
 pip install -e .
-maya-cython-compile doctor
-maya-cython-compile create-env --dry-run
-maya-cython-compile create-env --force
-maya-cython-compile build --dry-run
-maya-cython-compile build --force
-maya-cython-compile smoke --force
-maya-cython-compile assemble --force
-maya-cython-compile run --ensure-env --force
+maya-cython-compile config show --json
+maya-cython-compile --target windows-2025 doctor
+maya-cython-compile --target windows-2025 create-env --dry-run
+maya-cython-compile --target windows-2025 create-env --force
+maya-cython-compile --target windows-2025 build --dry-run
+maya-cython-compile --target windows-2025 build --force
+maya-cython-compile --target windows-2025 smoke --force
+maya-cython-compile --target windows-2025 assemble --force
+maya-cython-compile --target windows-2025 run --ensure-env --force
 ```
 
 Verification, from the repo build env created by `maya-cython-compile create-env`:

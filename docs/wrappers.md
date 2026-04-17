@@ -22,6 +22,7 @@ Each wrapper:
 
 - resolves `repoRoot` from the script location
 - sets `PYTHONPATH` to `<repoRoot>/src`
+- forwards `-Target` to CLI `--target` when provided
 - forwards the matching safety flags as `-DryRun` and `-Force`
 - dispatches into `python -m maya_cython_compile ...`
 
@@ -41,5 +42,7 @@ Current wrapper defaults match the script parameters, not a separate config laye
 - `build-package.ps1`: `-EnvPath ".conda/maya-cython-build"` and `-MayaPy "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"`
 - `smoke-package.ps1`: `-EnvPath ".conda/maya-cython-build"` and `-MayaPy "C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"`
 - `assemble-module.ps1`: `-EnvPath ".conda/maya-cython-build"`, `-ModuleName "MayaTool"`, and `-MayaVersion "2025"`
+
+Use `-Target <name>` when you want a wrapper to select a named build target explicitly.
 
 For new behavior, change the Python CLI first, then keep the wrappers as thin delegates.

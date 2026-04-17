@@ -7,7 +7,7 @@ read_when:
 
 # CLI
 
-`maya-cython-compile` is a non-interactive Windows-first CLI for building a Maya-compatible Cython wheel, validating it under `mayapy`, and assembling a Maya module payload.
+`maya-cython-compile` is a non-interactive Windows-first CLI for building Maya-compatible Cython wheels, validating them under `mayapy`, and assembling Maya module payloads for an explicit named target.
 
 ## Usage
 
@@ -15,6 +15,7 @@ read_when:
 maya-cython-compile
   [--repo-root PATH]
   [--config PATH]
+  [--target NAME]
   [--json]
   [--verbose]
   [--conda-exe PATH]
@@ -41,6 +42,7 @@ Global flags are accepted before or after the subcommand.
 | --- | --- |
 | `--repo-root PATH` | base directory for config lookup, inputs, and outputs |
 | `--config PATH` | alternate repo-local config file |
+| `--target NAME` | select a named build target |
 | `--json` | emit JSON to stdout |
 | `--verbose` | print spawned subprocess commands to stderr |
 | `--conda-exe PATH` | override Conda executable |
@@ -57,27 +59,27 @@ Flags that are not implemented:
 
 ### `config show`
 
-Prints the fully resolved config from repo metadata, local config, env vars, and CLI overrides.
+Prints the fully resolved config from tracked build metadata, local config, environment variables, and CLI overrides. The payload includes the selected `target`, `available_targets`, and the resolved target `platform`.
 
 ### `doctor`
 
-Checks whether the configured Conda executable, env path, and `mayapy` path exist, then probes Maya include and import-lib paths from `mayapy`.
+Checks whether the selected target's Conda executable, env path, and `mayapy` path exist, then probes Maya include and import-lib paths from `mayapy`.
 
 ### `create-env`
 
-Creates the local Conda build environment from [../environment.yml](../environment.yml). If the target env already exists, the command treats that as a replace operation and requires `--force`.
+Creates the local Conda build environment from [../environment.yml](../environment.yml). If the selected target's env already exists, the command treats that as a replace operation and requires `--force`.
 
 ### `build`
 
-Builds the configured wheel inside the resolved Conda env. It validates Maya runtime discovery, cleans prior build outputs when allowed, prepares `build/target-build/`, and writes the newest wheel to `dist/`.
+Builds the selected target's wheel inside the resolved Conda env. It validates Maya runtime discovery, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, and writes the newest wheel to `dist/<target>/`.
 
 ### `smoke`
 
-Finds the newest matching wheel in `dist/`, extracts it to `build/smoke/wheel/`, sets `PYTHONPATH` to that extraction root, and executes the configured smoke script under `mayapy`.
+Finds the newest matching wheel in `dist/<target>/`, extracts it to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and executes the configured smoke script under `mayapy`.
 
 ### `assemble`
 
-Finds the newest matching wheel in `dist/`, extracts package files into `dist/module/<ModuleName>/contents/scripts/`, skips wheel metadata directories, and writes `<ModuleName>.mod`.
+Finds the newest matching wheel in `dist/<target>/`, extracts package files into `dist/module/<target>/<ModuleName>/contents/scripts/`, skips wheel metadata directories, and writes `<ModuleName>.mod`.
 
 ### `run`
 
@@ -106,6 +108,7 @@ Dry-run behavior:
 - `--dry-run` previews deletions and subprocesses
 - it does not change files
 - `run --dry-run` returns one dry-run payload per included step
+- target-aware dry-run payloads include the resolved `target`
 
 ## Safety contract
 
@@ -140,11 +143,11 @@ Rules:
 
 ```powershell
 maya-cython-compile --version
-maya-cython-compile config show
-maya-cython-compile doctor --json
-maya-cython-compile create-env --dry-run
-maya-cython-compile build --force --verbose
-maya-cython-compile smoke --force
-maya-cython-compile assemble --force --module-name StudioTool --maya-version 2025
-maya-cython-compile run --ensure-env --force
+maya-cython-compile config show --json
+maya-cython-compile --target windows-2025 doctor
+maya-cython-compile --target windows-2025 create-env --dry-run
+maya-cython-compile --target windows-2025 build --force --verbose
+maya-cython-compile --target windows-2025 smoke --force
+maya-cython-compile --target windows-2025 assemble --force --module-name StudioTool --maya-version 2025
+maya-cython-compile --target windows-2025 run --ensure-env --force
 ```

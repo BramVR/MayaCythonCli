@@ -58,15 +58,13 @@ def create_env(
         raise CliError(f"Conda was not found at {config.local.conda_exe}", DEPENDENCY_ERROR)
 
     deletion_targets = plan_create_env_refresh(config)
-    command = [
-        "cmd.exe",
-        "/c",
-        str(config.local.conda_exe),
+    command = conda_command(
+        config.local.conda_exe,
         "env",
         "create",
         "--prefix",
         str(config.local.env_path),
-    ]
+    )
     if deletion_targets:
         command.append("--force")
     command.extend(["--file", str(config.repo_root / "environment.yml")])
@@ -76,7 +74,10 @@ def create_env(
             "create-env",
             deletion_targets,
             command=command,
-            details={"env_path": str(config.local.env_path)},
+            details={
+                "target": config.build.target_name,
+                "env_path": str(config.local.env_path),
+            },
         )
 
     require_confirmation(
@@ -105,12 +106,10 @@ def build(
     if not maya["include_dir"] or not maya["lib_dir"] or not maya["lib_name"]:
         raise CliError(f"Could not resolve Maya Python runtime from {config.local.maya_py}", DEPENDENCY_ERROR)
 
-    deletion_targets = plan_build_cleanup(config.repo_root)
-    dist_dir = config.repo_root / "dist"
-    command = [
-        "cmd.exe",
-        "/c",
-        str(config.local.conda_exe),
+    deletion_targets = plan_build_cleanup(config)
+    dist_dir = target_dist_dir(config)
+    command = conda_command(
+        config.local.conda_exe,
         "run",
         "--prefix",
         str(config.local.env_path),
@@ -119,13 +118,16 @@ def build(
         "bdist_wheel",
         "--dist-dir",
         str(dist_dir),
-    ]
+    )
     if dry_run:
         return render_dry_run(
             "build",
             deletion_targets,
             command=command,
-            details={"dist_dir": str(dist_dir)},
+            details={
+                "target": config.build.target_name,
+                "dist_dir": str(dist_dir),
+            },
         )
 
     require_confirmation(
@@ -137,7 +139,7 @@ def build(
     build_tree = prepare_build_tree(config)
     dist_dir.mkdir(parents=True, exist_ok=True)
 
-    temp_root = config.repo_root / "build" / "tmp"
+    temp_root = target_temp_root(config)
     temp_root.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["MAYA_PYTHON_INCLUDE"] = str(maya["include_dir"])
@@ -163,11 +165,11 @@ def smoke(
     if not config.local.maya_py.exists():
         raise CliError(f"mayapy not found: {config.local.maya_py}", DEPENDENCY_ERROR)
 
-    smoke_root = config.repo_root / "build" / "smoke"
-    extract_dir = smoke_root / "wheel"
+    extract_dir = target_smoke_extract_dir(config)
     deletion_targets = plan_smoke_cleanup(extract_dir)
     command = [str(config.local.maya_py), "-c", smoke_script(config)]
     details: dict[str, Any] = {
+        "target": config.build.target_name,
         "extract_dir": str(extract_dir),
         "wheel": str(wheel) if wheel else "after build step",
     }
@@ -207,10 +209,11 @@ def assemble(
     wheel = latest_wheel(config, error_code=ASSEMBLE_ERROR) if require_wheel else latest_wheel_optional(config)
     resolved_module = module_name or config.build.module_name
     resolved_maya_version = maya_version or config.build.maya_version
-    module_root = config.repo_root / "dist" / "module" / resolved_module
+    module_root = target_module_root(config, resolved_module)
     scripts_root = module_root / "contents" / "scripts"
     deletion_targets = plan_assemble_cleanup(module_root)
     details = {
+        "target": config.build.target_name,
         "module_root": str(module_root),
         "module_file": str(module_root / f"{resolved_module}.mod"),
         "wheel": str(wheel) if wheel else "after build step",
@@ -237,8 +240,13 @@ def assemble(
             archive.extract(member, scripts_root)
 
     mod_path = module_root / f"{resolved_module}.mod"
+    contents_root = ".\\contents" if config.build.platform == "windows" else "./contents"
     mod_path.write_text(
-        f"+ MAYAVERSION:{resolved_maya_version} PLATFORM:win64 {resolved_module} {config.build.version} .\\contents",
+        (
+            f"+ MAYAVERSION:{resolved_maya_version} "
+            f"PLATFORM:{module_platform_token(config.build.platform)} "
+            f"{resolved_module} {config.build.version} {contents_root}"
+        ),
         encoding="utf-8",
     )
     return {"module_root": str(module_root), "module_file": str(mod_path)}
@@ -362,14 +370,25 @@ def plan_create_env_refresh(config: ResolvedConfig) -> list[DeletionTarget]:
     return [DeletionTarget(config.local.env_path, "replace existing Conda environment")]
 
 
-def plan_build_cleanup(repo_root: Path) -> list[DeletionTarget]:
+def plan_build_cleanup(config: ResolvedConfig) -> list[DeletionTarget]:
     deletion_targets: list[DeletionTarget] = []
-    build_root = repo_root / "build"
-    if build_root.exists():
-        for pattern in ("lib.*", "bdist.*", "temp.*", "cython", "target-build", "tmp"):
-            for path in sorted(build_root.glob(pattern)):
-                deletion_targets.append(DeletionTarget(path, f"clean build artifact matching {pattern}"))
-    for egg_info in sorted(repo_root.glob("*.egg-info")):
+    for path, reason in (
+        (
+            config.repo_root / "build" / "target-build" / config.build.target_name,
+            f"replace generated build tree for target {config.build.target_name}",
+        ),
+        (
+            target_temp_root(config),
+            f"replace build temp files for target {config.build.target_name}",
+        ),
+        (
+            target_dist_dir(config),
+            f"replace wheel output for target {config.build.target_name}",
+        ),
+    ):
+        if path.exists():
+            deletion_targets.append(DeletionTarget(path, reason))
+    for egg_info in sorted(config.repo_root.glob("*.egg-info")):
         if egg_info.is_dir():
             deletion_targets.append(DeletionTarget(egg_info, "remove stale egg-info metadata"))
     return deletion_targets
@@ -394,15 +413,43 @@ def plan_pipeline_cleanup(
     skip_assemble: bool,
     module_name: str | None,
 ) -> list[DeletionTarget]:
-    deletion_targets = plan_build_cleanup(config.repo_root)
+    deletion_targets = plan_build_cleanup(config)
     if not skip_smoke:
-        deletion_targets.extend(plan_smoke_cleanup(config.repo_root / "build" / "smoke" / "wheel"))
+        deletion_targets.extend(plan_smoke_cleanup(target_smoke_extract_dir(config)))
     if not skip_assemble:
         resolved_module = module_name or config.build.module_name
-        deletion_targets.extend(
-            plan_assemble_cleanup(config.repo_root / "dist" / "module" / resolved_module)
-        )
+        deletion_targets.extend(plan_assemble_cleanup(target_module_root(config, resolved_module)))
     return deletion_targets
+
+
+def target_temp_root(config: ResolvedConfig) -> Path:
+    return config.repo_root / "build" / "tmp" / config.build.target_name
+
+
+def target_dist_dir(config: ResolvedConfig) -> Path:
+    return config.repo_root / "dist" / config.build.target_name
+
+
+def target_smoke_extract_dir(config: ResolvedConfig) -> Path:
+    return config.repo_root / "build" / "smoke" / config.build.target_name / "wheel"
+
+
+def target_module_root(config: ResolvedConfig, module_name: str) -> Path:
+    return config.repo_root / "dist" / "module" / config.build.target_name / module_name
+
+
+def conda_command(conda_exe: Path, *args: str) -> list[str]:
+    if conda_exe.suffix.lower() in {".bat", ".cmd"}:
+        return ["cmd.exe", "/c", str(conda_exe), *args]
+    return [str(conda_exe), *args]
+
+
+def module_platform_token(platform: str) -> str:
+    return {
+        "windows": "win64",
+        "linux": "linux",
+        "macos": "mac",
+    }[platform]
 
 
 def delete_paths(paths: list[DeletionTarget]) -> None:
@@ -458,7 +505,7 @@ def latest_wheel_optional(config: ResolvedConfig) -> Path | None:
 
 
 def latest_wheel(config: ResolvedConfig, *, error_code: int = BUILD_ERROR) -> Path:
-    dist_dir = config.repo_root / "dist"
+    dist_dir = target_dist_dir(config)
     distribution = config.build.distribution_name.replace("-", "_")
     wheels = sorted(
         dist_dir.glob(f"{distribution}-*.whl"),

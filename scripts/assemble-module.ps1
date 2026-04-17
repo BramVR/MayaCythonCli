@@ -1,4 +1,5 @@
 param(
+    [string]$Target = "",
     [string]$EnvPath = ".conda/maya-cython-build",
     [string]$ModuleName = "MayaTool",
     [string]$MayaVersion = "2025",
@@ -19,19 +20,31 @@ else {
 $localPython = Join-Path $resolvedEnvPath "python.exe"
 
 if (Test-Path $localPython) {
-    & $localPython -m maya_cython_compile assemble --repo-root $repoRoot --env-path $EnvPath --module-name $ModuleName --maya-version $MayaVersion @(
+    & $localPython -m maya_cython_compile assemble --repo-root $repoRoot @(
+        if ($Target) { "--target"; $Target }
+        "--env-path"; $EnvPath
+        "--module-name"; $ModuleName
+        "--maya-version"; $MayaVersion
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )
 }
 elseif ($py) {
-    & $py.Source -3 -m maya_cython_compile assemble --repo-root $repoRoot --env-path $EnvPath --module-name $ModuleName --maya-version $MayaVersion @(
+    & $py.Source -3 -m maya_cython_compile assemble --repo-root $repoRoot @(
+        if ($Target) { "--target"; $Target }
+        "--env-path"; $EnvPath
+        "--module-name"; $ModuleName
+        "--maya-version"; $MayaVersion
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )
 }
 elseif ($python) {
-    & $python.Source -m maya_cython_compile assemble --repo-root $repoRoot --env-path $EnvPath --module-name $ModuleName --maya-version $MayaVersion @(
+    & $python.Source -m maya_cython_compile assemble --repo-root $repoRoot @(
+        if ($Target) { "--target"; $Target }
+        "--env-path"; $EnvPath
+        "--module-name"; $ModuleName
+        "--maya-version"; $MayaVersion
         if ($DryRun) { "--dry-run" }
         if ($Force) { "--force" }
     )

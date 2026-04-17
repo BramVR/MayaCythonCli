@@ -2,8 +2,6 @@
   "distribution_name": "maya-tool",
   "package_name": "maya_tool",
   "package_dir": "src/maya_tool",
-  "module_name": "MayaTool",
-  "maya_version": "2025",
   "version": "0.1.0",
   "compiled_modules": [
     "_cy_logic"
@@ -17,5 +15,13 @@
       "_cy_logic"
     ],
     "resource_check": "tool_manifest.json"
+  },
+  "default_target": "windows-2025",
+  "targets": {
+    "windows-2025": {
+      "platform": "windows",
+      "module_name": "MayaTool",
+      "maya_version": "2025"
+    }
   }
 }

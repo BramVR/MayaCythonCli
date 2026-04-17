@@ -10,6 +10,18 @@ DEFAULT_CONDA_EXE = str(Path.home() / "anaconda3" / "condabin" / "conda.bat")
 DEFAULT_MAYA_PY = r"C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe"
 DEFAULT_ENV_PATH = ".conda/maya-cython-build"
 DEFAULT_CONFIG_NAME = ".maya-cython-compile.json"
+DEFAULT_TARGET_NAME = "default"
+PLATFORM_ALIASES = {
+    "windows": "windows",
+    "win": "windows",
+    "win64": "windows",
+    "linux": "linux",
+    "linux64": "linux",
+    "mac": "macos",
+    "macos": "macos",
+    "darwin": "macos",
+    "osx": "macos",
+}
 
 
 @dataclass(slots=True)
@@ -21,6 +33,8 @@ class SmokeConfig:
 
 @dataclass(slots=True)
 class BuildConfig:
+    target_name: str
+    platform: str
     distribution_name: str
     package_name: str
     package_dir: str
@@ -45,31 +59,44 @@ class ResolvedConfig:
     repo_root: Path
     build: BuildConfig
     local: LocalConfig
+    available_targets: tuple[str, ...]
 
 
 def default_config_path(repo_root: Path) -> Path:
     return repo_root / DEFAULT_CONFIG_NAME
 
 
-def load_build_config(repo_root: Path) -> BuildConfig:
-    payload = _read_json(repo_root / "build-config.json")
-    smoke_payload = payload.get("smoke", {})
-    return BuildConfig(
-        distribution_name=payload["distribution_name"],
-        package_name=payload["package_name"],
-        package_dir=payload["package_dir"],
-        module_name=payload.get("module_name", payload["package_name"]),
-        maya_version=str(payload.get("maya_version", "2025")),
-        version=payload["version"],
-        compiled_modules=list(payload["compiled_modules"]),
-        package_data=list(payload.get("package_data", [])),
-        smoke=SmokeConfig(
-            callable=smoke_payload.get("callable"),
-            compiled_modules=list(
-                smoke_payload.get("compiled_modules", payload.get("compiled_modules", []))
+def load_build_config(
+    repo_root: Path,
+    *,
+    target_name: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> tuple[BuildConfig, tuple[str, ...]]:
+    payload = payload or _read_json(repo_root / "build-config.json")
+    resolved_target = _resolve_target_name(payload, target_name)
+    build_payload = _resolve_build_payload(payload, resolved_target)
+    smoke_payload = build_payload.get("smoke", {})
+    return (
+        BuildConfig(
+            target_name=resolved_target,
+            platform=_normalize_platform(build_payload.get("platform", "windows")),
+            distribution_name=build_payload["distribution_name"],
+            package_name=build_payload["package_name"],
+            package_dir=build_payload["package_dir"],
+            module_name=build_payload.get("module_name", build_payload["package_name"]),
+            maya_version=str(build_payload.get("maya_version", "2025")),
+            version=build_payload["version"],
+            compiled_modules=list(build_payload["compiled_modules"]),
+            package_data=list(build_payload.get("package_data", [])),
+            smoke=SmokeConfig(
+                callable=smoke_payload.get("callable"),
+                compiled_modules=list(
+                    smoke_payload.get("compiled_modules", build_payload.get("compiled_modules", []))
+                ),
+                resource_check=smoke_payload.get("resource_check"),
             ),
-            resource_check=smoke_payload.get("resource_check"),
         ),
+        _available_targets(payload),
     )
 
 
@@ -77,19 +104,27 @@ def resolve_config(
     repo_root: Path,
     *,
     config_path: str | None = None,
+    target: str | None = None,
     conda_exe: str | None = None,
     env_path: str | None = None,
     maya_py: str | None = None,
 ) -> ResolvedConfig:
     repo_root = repo_root.resolve()
-    build = load_build_config(repo_root)
     config_file = Path(config_path).resolve() if config_path else default_config_path(repo_root)
     file_payload = _read_json(config_file) if config_file.exists() else {}
+    build_payload = _read_json(repo_root / "build-config.json")
+    build, available_targets = load_build_config(
+        repo_root,
+        target_name=target or os.environ.get("MAYA_CYTHON_COMPILE_TARGET") or file_payload.get("target"),
+        payload=build_payload,
+    )
+    target_payload = _local_target_payload(file_payload, build.target_name)
 
     resolved_conda = _resolve_path(
         repo_root,
         conda_exe
         or os.environ.get("MAYA_CYTHON_COMPILE_CONDA_EXE")
+        or target_payload.get("conda_exe")
         or file_payload.get("conda_exe")
         or DEFAULT_CONDA_EXE,
     )
@@ -97,6 +132,7 @@ def resolve_config(
         repo_root,
         env_path
         or os.environ.get("MAYA_CYTHON_COMPILE_ENV_PATH")
+        or target_payload.get("env_path")
         or file_payload.get("env_path")
         or DEFAULT_ENV_PATH,
     )
@@ -104,6 +140,7 @@ def resolve_config(
         repo_root,
         maya_py
         or os.environ.get("MAYA_CYTHON_COMPILE_MAYA_PY")
+        or target_payload.get("maya_py")
         or file_payload.get("maya_py")
         or DEFAULT_MAYA_PY,
     )
@@ -117,6 +154,7 @@ def resolve_config(
             maya_py=resolved_maya_py,
             config_path=config_file,
         ),
+        available_targets=available_targets,
     )
 
 
@@ -124,6 +162,9 @@ def as_dict(config: ResolvedConfig) -> dict[str, Any]:
     return {
         "repo_root": str(config.repo_root),
         "local_config_path": str(config.local.config_path),
+        "target": config.build.target_name,
+        "available_targets": list(config.available_targets),
+        "platform": config.build.platform,
         "conda_exe": str(config.local.conda_exe),
         "env_path": str(config.local.env_path),
         "maya_py": str(config.local.maya_py),
@@ -152,3 +193,79 @@ def _resolve_path(repo_root: Path, raw_path: str) -> Path:
     if path.is_absolute():
         return path
     return (repo_root / path).resolve()
+
+
+def _available_targets(payload: dict[str, Any]) -> tuple[str, ...]:
+    targets = payload.get("targets")
+    if not isinstance(targets, dict) or not targets:
+        return (DEFAULT_TARGET_NAME,)
+    return tuple(targets.keys())
+
+
+def _resolve_target_name(payload: dict[str, Any], requested_target: str | None) -> str:
+    targets = payload.get("targets")
+    if not isinstance(targets, dict) or not targets:
+        if requested_target and requested_target != DEFAULT_TARGET_NAME:
+            raise ValueError(
+                f"build-config.json does not define named targets; remove --target {requested_target!r} "
+                "or migrate to a targets map."
+            )
+        return DEFAULT_TARGET_NAME
+
+    if requested_target:
+        if requested_target not in targets:
+            raise ValueError(f"Unknown target {requested_target!r}. Available targets: {', '.join(targets)}")
+        return requested_target
+
+    default_target = payload.get("default_target")
+    if isinstance(default_target, str) and default_target:
+        if default_target not in targets:
+            raise ValueError(
+                f"default_target {default_target!r} is not defined in build-config.json targets."
+            )
+        return default_target
+
+    if len(targets) == 1:
+        return next(iter(targets))
+
+    raise ValueError("build-config.json defines multiple targets; select one with --target or set default_target.")
+
+
+def _resolve_build_payload(payload: dict[str, Any], target_name: str) -> dict[str, Any]:
+    targets = payload.get("targets")
+    if not isinstance(targets, dict) or not targets:
+        return payload
+
+    target_payload = targets.get(target_name)
+    if not isinstance(target_payload, dict):
+        raise ValueError(f"Target {target_name!r} in build-config.json must be an object.")
+
+    base_payload = {key: value for key, value in payload.items() if key not in {"default_target", "targets"}}
+    return _merge_dicts(base_payload, target_payload)
+
+
+def _local_target_payload(payload: dict[str, Any], target_name: str) -> dict[str, Any]:
+    targets = payload.get("targets")
+    if not isinstance(targets, dict):
+        return {}
+    target_payload = targets.get(target_name, {})
+    if not isinstance(target_payload, dict):
+        raise ValueError(f"Local config target {target_name!r} must be an object.")
+    return target_payload
+
+
+def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _normalize_platform(raw_platform: str) -> str:
+    normalized = PLATFORM_ALIASES.get(str(raw_platform).lower())
+    if normalized is None:
+        raise ValueError(f"Unsupported target platform {raw_platform!r}.")
+    return normalized
