@@ -64,8 +64,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     assemble_parser = subparsers.add_parser("assemble", help="Assemble the Maya module layout.")
     add_safety_flags(assemble_parser)
-    assemble_parser.add_argument("--module-name", help="Override module name from build-config.json.")
-    assemble_parser.add_argument("--maya-version", help="Override Maya version from build-config.json.")
 
     run_parser = subparsers.add_parser("run", help="Run the full pipeline.")
     add_safety_flags(run_parser)
@@ -76,8 +74,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("--skip-smoke", action="store_true", help="Skip mayapy smoke validation.")
     run_parser.add_argument("--skip-assemble", action="store_true", help="Skip module assembly.")
-    run_parser.add_argument("--module-name", help="Override module name from build-config.json.")
-    run_parser.add_argument("--maya-version", help="Override Maya version from build-config.json.")
 
     return parser
 
@@ -168,8 +164,6 @@ def dispatch(args: argparse.Namespace, config: ResolvedConfig) -> dict[str, Any]
     if args.command == "assemble":
         return assemble(
             config,
-            module_name=args.module_name,
-            maya_version=args.maya_version,
             dry_run=bool(args.dry_run),
             force=bool(args.force),
         )
@@ -180,8 +174,6 @@ def dispatch(args: argparse.Namespace, config: ResolvedConfig) -> dict[str, Any]
             ensure_env=bool(args.ensure_env),
             skip_smoke=bool(args.skip_smoke),
             skip_assemble=bool(args.skip_assemble),
-            module_name=args.module_name,
-            maya_version=args.maya_version,
             dry_run=bool(args.dry_run),
             force=bool(args.force),
         )

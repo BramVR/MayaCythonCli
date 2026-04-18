@@ -113,6 +113,8 @@ Expected outputs:
 - `dist/module/<target>/<ModuleName>/<ModuleName>.mod`
 - `dist/module/<target>/<ModuleName>/contents/scripts/<package>/`
 
+The assembled `.mod` file now derives its module name, `MAYAVERSION:`, and `PLATFORM:` from the selected target. If you reuse one module name across multiple Maya versions or operating systems, the target-scoped `dist/module/<target>/...` layout keeps those assembled outputs separate.
+
 ## Run the full flow
 
 ```powershell
@@ -125,7 +127,7 @@ Useful variants:
 ```powershell
 maya-cython-compile --target windows-2025 run --skip-smoke
 maya-cython-compile --target windows-2025 run --skip-assemble
-maya-cython-compile --target windows-2025 run --force --module-name StudioTool --maya-version 2025
+maya-cython-compile --target windows-2025 run --force
 ```
 
 Sharing one Conda env across multiple targets is only safe when those targets use the same Python ABI and compatible build dependencies. The default `.conda/<target>` layout avoids cross-target wheel and interpreter drift.

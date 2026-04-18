@@ -19,6 +19,7 @@ from maya_cython_compile.config import resolve_config
 from maya_cython_compile.errors import DEPENDENCY_ERROR, SMOKE_ERROR, CliError
 from maya_cython_compile.pipeline import (
     ARTIFACT_MANIFEST_FILENAME,
+    assemble,
     build,
     conda_command,
     ensure_maya_build_runtime,
@@ -58,6 +59,49 @@ def write_multi_target_build_config(repo_root: Path) -> None:
                         "platform": "linux",
                         "module_name": "MayaToolLinux",
                         "maya_version": "2024",
+                        "python_version": "3.11",
+                    },
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_cross_platform_build_config(repo_root: Path) -> None:
+    (repo_root / "build-config.json").write_text(
+        json.dumps(
+            {
+                "distribution_name": "maya-tool",
+                "package_name": "maya_tool",
+                "package_dir": "src/maya_tool",
+                "version": "0.1.0",
+                "compiled_modules": ["_cy_logic"],
+                "package_data": ["*.json"],
+                "smoke": {
+                    "callable": "show_ui",
+                    "compiled_modules": ["_cy_logic"],
+                    "resource_check": "tool_manifest.json",
+                },
+                "default_target": "windows-2025",
+                "targets": {
+                    "windows-2025": {
+                        "platform": "windows",
+                        "module_name": "SharedTool",
+                        "maya_version": "2025",
+                        "python_version": "3.11",
+                    },
+                    "linux-2024": {
+                        "platform": "linux",
+                        "module_name": "SharedTool",
+                        "maya_version": "2024",
+                        "python_version": "3.11",
+                    },
+                    "macos-2026": {
+                        "platform": "macos",
+                        "module_name": "SharedTool",
+                        "maya_version": "2026",
                         "python_version": "3.11",
                     },
                 },
@@ -380,6 +424,47 @@ class PipelineTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.exit_code, SMOKE_ERROR)
         self.assertIn("does not match selected target linux-2024", str(exc.exception))
+
+    def test_assemble_writes_target_specific_mod_files_without_cross_target_conflicts(self) -> None:
+        repo_root = make_temp_repo("pipeline-assemble-cross-target")
+        write_cross_platform_build_config(repo_root)
+
+        expected_mod_contents = {
+            "windows-2025": r"+ MAYAVERSION:2025 PLATFORM:win64 SharedTool 0.1.0 .\contents",
+            "linux-2024": "+ MAYAVERSION:2024 PLATFORM:linux SharedTool 0.1.0 ./contents",
+            "macos-2026": "+ MAYAVERSION:2026 PLATFORM:mac SharedTool 0.1.0 ./contents",
+        }
+        module_roots: dict[str, Path] = {}
+
+        for target_name, platform, maya_version in (
+            ("windows-2025", "windows", "2025"),
+            ("linux-2024", "linux", "2024"),
+            ("macos-2026", "macos", "2026"),
+        ):
+            write_fake_artifact_wheel(
+                repo_root,
+                target_name=target_name,
+                platform=platform,
+                maya_version=maya_version,
+                python_version="3.11",
+                module_name="SharedTool",
+            )
+            config = resolve_config(repo_root, target=target_name, maya_py=sys.executable)
+
+            payload = assemble(config, force=True)
+
+            module_root = Path(payload["module_root"])
+            module_roots[target_name] = module_root
+            self.assertEqual(module_root, repo_root / "dist" / "module" / target_name / "SharedTool")
+            self.assertEqual(
+                Path(payload["module_file"]).read_text(encoding="utf-8"),
+                expected_mod_contents[target_name],
+            )
+            self.assertTrue((module_root / "contents" / "scripts").exists())
+
+        self.assertNotEqual(module_roots["windows-2025"], module_roots["linux-2024"])
+        self.assertNotEqual(module_roots["windows-2025"], module_roots["macos-2026"])
+        self.assertNotEqual(module_roots["linux-2024"], module_roots["macos-2026"])
 
     def test_render_target_environment_yaml_replaces_python_dependency(self) -> None:
         rendered = render_target_environment_yaml(

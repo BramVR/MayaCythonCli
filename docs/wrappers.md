@@ -25,7 +25,7 @@ Each wrapper:
 - resolves `repoRoot` from the script location
 - sets `PYTHONPATH` to `<repoRoot>/src`
 - forwards `-Target` to CLI `--target` when provided
-- forwards `-EnvPath`, `-MayaPy`, `-ModuleName`, and `-MayaVersion` only when you pass them explicitly
+- forwards `-EnvPath` and `-MayaPy` only when that wrapper exposes them and you pass them explicitly
 - forwards the matching safety flags as `-DryRun` and `-Force`
 - dispatches into `python -m maya_cython_compile ...`
 
@@ -42,9 +42,10 @@ If no interpreter is found, the wrapper throws.
 Wrapper defaults now defer to the Python CLI and repo config:
 
 - no wrapper forces a shared `env_path`
-- no wrapper forces a `mayapy`, `module_name`, or `maya_version` value unless you pass one
+- no wrapper forces a `mayapy` value unless you pass one
+- `assemble-module.ps1` no longer accepts `-MayaVersion` or `-ModuleName`; assembly always uses the selected target's `module_name` and `maya_version`
 - `-Target <name>` is the normal way to select a named build target explicitly
 
-Pass `-EnvPath`, `-MayaPy`, `-ModuleName`, or `-MayaVersion` only when you need to override the resolved config for that invocation.
+Pass `-EnvPath` or `-MayaPy` only when you need to override the resolved config for that invocation.
 
 For new behavior, change the Python CLI first, then keep the wrappers as thin delegates.

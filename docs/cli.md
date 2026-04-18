@@ -28,9 +28,8 @@ maya-cython-compile
     | create-env [--dry-run] [--force]
     | build [--dry-run] [--force]
     | smoke [--dry-run] [--force]
-    | assemble [--dry-run] [--force] [--module-name NAME] [--maya-version VERSION]
+    | assemble [--dry-run] [--force]
     | run [--dry-run] [--force] [--ensure-env] [--skip-smoke] [--skip-assemble]
-          [--module-name NAME] [--maya-version VERSION]
   )
 ```
 
@@ -82,7 +81,7 @@ Reads `dist/<target>/artifact.json`, validates that the referenced wheel's embed
 
 ### `assemble`
 
-Reads `dist/<target>/artifact.json`, validates the referenced wheel against the selected target, extracts package files into `dist/module/<target>/<ModuleName>/contents/scripts/`, skips wheel metadata directories, and writes `<ModuleName>.mod`.
+Reads `dist/<target>/artifact.json`, validates the referenced wheel against the selected target, extracts package files into `dist/module/<target>/<ModuleName>/contents/scripts/`, skips wheel metadata directories, and writes `<ModuleName>.mod`. The module name, `MAYAVERSION:`, and `PLATFORM:` tokens in that file all come from the selected target's resolved metadata, not from extra assembly-only flags.
 
 ### `run`
 
@@ -112,6 +111,7 @@ Dry-run behavior:
 - it does not change files
 - `run --dry-run` returns one dry-run payload per included step
 - target-aware dry-run payloads include the resolved `target`
+- `assemble --dry-run` also reports the selected target's `target_platform` and `target_maya_version`
 - `create-env --dry-run` also reports the resolved `python_version` and generated environment file path
 - build, smoke, and assemble dry runs also report the target artifact manifest path
 
@@ -159,6 +159,6 @@ maya-cython-compile --target windows-2025 doctor
 maya-cython-compile --target windows-2025 create-env --dry-run
 maya-cython-compile --target windows-2025 build --force --verbose
 maya-cython-compile --target windows-2025 smoke --force
-maya-cython-compile --target windows-2025 assemble --force --module-name StudioTool --maya-version 2025
+maya-cython-compile --target windows-2025 assemble --force
 maya-cython-compile --target windows-2025 run --ensure-env --force
 ```

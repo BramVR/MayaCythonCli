@@ -103,4 +103,4 @@ The wheel is the intermediate artifact. The final Maya module payload is assembl
 
 Before extraction, assembly validates the manifest-selected wheel hash and confirms that its embedded target metadata still matches the selected target name, platform, Maya version, Python version, distribution, package, module, and version. That prevents wheels built for one Maya target from being silently consumed by another target when filenames happen to overlap.
 
-Assembly skips wheel metadata directories ending in `.dist-info` and `.data`, and the `.mod` file's `PLATFORM:` token is derived from the selected target platform instead of being hardcoded to Windows.
+Assembly skips wheel metadata directories ending in `.dist-info` and `.data`. The `.mod` file is rendered from the resolved target metadata, so the module name, `MAYAVERSION:`, and `PLATFORM:` all come from the selected target instead of loose assembly-only flags. Because the module root is `dist/module/<target>/<ModuleName>/`, different platform or Maya-version targets do not clobber one another even when they reuse the same module name.

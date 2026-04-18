@@ -329,8 +329,6 @@ def smoke(
 def assemble(
     config: ResolvedConfig,
     *,
-    module_name: str | None = None,
-    maya_version: str | None = None,
     dry_run: bool = False,
     force: bool = False,
     require_wheel: bool = True,
@@ -341,15 +339,16 @@ def assemble(
         else latest_artifact_optional(config, error_code=ASSEMBLE_ERROR)
     )
     wheel = artifact.wheel if artifact else None
-    resolved_module = module_name or config.build.module_name
-    resolved_maya_version = maya_version or config.build.maya_version
-    module_root = target_module_root(config, resolved_module)
+    module_root = target_module_root(config)
     scripts_root = module_root / "contents" / "scripts"
+    mod_path = module_root / f"{config.build.module_name}.mod"
     deletion_targets = plan_assemble_cleanup(module_root)
     details = {
         "target": config.build.target_name,
+        "target_platform": config.build.platform,
+        "target_maya_version": config.build.maya_version,
         "module_root": str(module_root),
-        "module_file": str(module_root / f"{resolved_module}.mod"),
+        "module_file": str(mod_path),
         "wheel": str(wheel) if wheel else "after build step",
         "artifact_manifest": str(target_artifact_manifest_path(config)),
     }
@@ -374,16 +373,7 @@ def assemble(
                 continue
             archive.extract(member, scripts_root)
 
-    mod_path = module_root / f"{resolved_module}.mod"
-    contents_root = ".\\contents" if config.build.platform == "windows" else "./contents"
-    mod_path.write_text(
-        (
-            f"+ MAYAVERSION:{resolved_maya_version} "
-            f"PLATFORM:{module_platform_token(config.build.platform)} "
-            f"{resolved_module} {config.build.version} {contents_root}"
-        ),
-        encoding="utf-8",
-    )
+    mod_path.write_text(render_module_definition(config), encoding="utf-8")
     return {
         "wheel": str(wheel),
         "artifact_manifest": str(target_artifact_manifest_path(config)),
@@ -399,8 +389,6 @@ def run_pipeline(
     ensure_env: bool = False,
     skip_smoke: bool = False,
     skip_assemble: bool = False,
-    module_name: str | None = None,
-    maya_version: str | None = None,
     dry_run: bool = False,
     force: bool = False,
 ) -> dict[str, Any]:
@@ -430,8 +418,6 @@ def run_pipeline(
         if not skip_assemble:
             steps["assemble"] = assemble(
                 config,
-                module_name=module_name,
-                maya_version=maya_version,
                 dry_run=True,
                 force=force,
                 require_wheel=False,
@@ -442,7 +428,6 @@ def run_pipeline(
         config,
         skip_smoke=skip_smoke,
         skip_assemble=skip_assemble,
-        module_name=module_name,
     )
     require_confirmation(
         "run",
@@ -470,8 +455,6 @@ def run_pipeline(
     if not skip_assemble:
         steps["assemble"] = assemble(
             config,
-            module_name=module_name,
-            maya_version=maya_version,
             force=True,
         )
     return steps
@@ -712,14 +695,12 @@ def plan_pipeline_cleanup(
     *,
     skip_smoke: bool,
     skip_assemble: bool,
-    module_name: str | None,
 ) -> list[DeletionTarget]:
     deletion_targets = plan_build_cleanup(config)
     if not skip_smoke:
         deletion_targets.extend(plan_smoke_cleanup(target_smoke_extract_dir(config)))
     if not skip_assemble:
-        resolved_module = module_name or config.build.module_name
-        deletion_targets.extend(plan_assemble_cleanup(target_module_root(config, resolved_module)))
+        deletion_targets.extend(plan_assemble_cleanup(target_module_root(config)))
     return deletion_targets
 
 
@@ -743,8 +724,20 @@ def target_smoke_extract_dir(config: ResolvedConfig) -> Path:
     return config.repo_root / "build" / "smoke" / config.build.target_name / "wheel"
 
 
-def target_module_root(config: ResolvedConfig, module_name: str) -> Path:
-    return config.repo_root / "dist" / "module" / config.build.target_name / module_name
+def target_module_root(config: ResolvedConfig) -> Path:
+    return config.repo_root / "dist" / "module" / config.build.target_name / config.build.module_name
+
+
+def render_module_definition(config: ResolvedConfig) -> str:
+    return (
+        f"+ MAYAVERSION:{config.build.maya_version} "
+        f"PLATFORM:{module_platform_token(config.build.platform)} "
+        f"{config.build.module_name} {config.build.version} {module_contents_root(config.build.platform)}"
+    )
+
+
+def module_contents_root(platform: str) -> str:
+    return ".\\contents" if platform == "windows" else "./contents"
 
 
 def module_platform_token(platform: str) -> str:

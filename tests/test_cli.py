@@ -182,6 +182,36 @@ class CliTests(unittest.TestCase):
         self.assertTrue(args.dry_run)
         self.assertTrue(args.force)
 
+    def test_build_parser_rejects_maya_version_override_for_assemble(self) -> None:
+        parser = build_parser()
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as exc:
+            parser.parse_args(["assemble", "--maya-version", "2024"])
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--maya-version", stderr.getvalue())
+
+    def test_build_parser_rejects_module_name_override_for_assemble(self) -> None:
+        parser = build_parser()
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as exc:
+            parser.parse_args(["assemble", "--module-name", "StudioTool"])
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--module-name", stderr.getvalue())
+
+    def test_build_parser_rejects_module_name_override_for_run(self) -> None:
+        parser = build_parser()
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as exc:
+            parser.parse_args(["run", "--module-name", "StudioTool"])
+
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn("--module-name", stderr.getvalue())
+
     def test_main_config_show_json(self) -> None:
         repo_root = make_temp_repo("cli-config-show")
         write_multi_target_build_config(repo_root)

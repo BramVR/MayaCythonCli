@@ -1,8 +1,6 @@
 param(
     [string]$Target = "",
     [string]$EnvPath = "",
-    [string]$ModuleName = "",
-    [string]$MayaVersion = "",
     [switch]$DryRun,
     [switch]$Force
 )
@@ -16,8 +14,6 @@ $cliArgs = @(
     $repoRoot
     if ($Target) { "--target"; $Target }
     if ($EnvPath) { "--env-path"; $EnvPath }
-    if ($ModuleName) { "--module-name"; $ModuleName }
-    if ($MayaVersion) { "--maya-version"; $MayaVersion }
     if ($DryRun) { "--dry-run" }
     if ($Force) { "--force" }
 )
