@@ -89,6 +89,7 @@ The build step:
 - prepares `build/target-build/<target>/`
 - runs `setup.py bdist_wheel` inside the configured Conda env
 - writes the wheel to `dist/<target>/`
+- writes `dist/<target>/artifact.json`, which records the exact wheel selected for that target plus its `sha256`
 
 ## Smoke the wheel under Maya
 
@@ -97,7 +98,7 @@ maya-cython-compile --target windows-2025 smoke --dry-run
 maya-cython-compile --target windows-2025 smoke --force
 ```
 
-The smoke step extracts the newest wheel from `dist/<target>/` to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and validates the configured imports, callable, and resource check under `mayapy`.
+The smoke step resolves `dist/<target>/artifact.json`, verifies the referenced wheel hash, checks that the wheel's `.dist-info` target metadata matches the selected target, extracts it to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and validates the configured imports, callable, and resource check under `mayapy`. If the manifest is missing or the wheel metadata does not match, rebuild that target first.
 
 ## Assemble the Maya module
 
@@ -108,6 +109,7 @@ maya-cython-compile --target windows-2025 assemble --force
 
 Expected outputs:
 
+- `dist/<target>/artifact.json`
 - `dist/module/<target>/<ModuleName>/<ModuleName>.mod`
 - `dist/module/<target>/<ModuleName>/contents/scripts/<package>/`
 

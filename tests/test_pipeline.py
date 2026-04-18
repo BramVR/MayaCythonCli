@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -14,15 +16,18 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from maya_cython_compile.config import resolve_config
-from maya_cython_compile.errors import DEPENDENCY_ERROR, CliError
+from maya_cython_compile.errors import DEPENDENCY_ERROR, SMOKE_ERROR, CliError
 from maya_cython_compile.pipeline import (
+    ARTIFACT_MANIFEST_FILENAME,
     build,
     conda_command,
     ensure_maya_build_runtime,
     probe_maya_runtime,
     python_version_matches_target,
     render_target_environment_yaml,
+    smoke,
 )
+from maya_cython_compile.target_builder import ARTIFACT_METADATA_FILENAME, prepare_build_tree
 from probe_fixtures import make_probe_completed_process, make_temp_repo, write_fake_maya_probe_layout
 
 
@@ -61,6 +66,81 @@ def write_multi_target_build_config(repo_root: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def target_artifact_metadata(
+    *,
+    target_name: str,
+    platform: str,
+    maya_version: str,
+    python_version: str,
+    distribution_name: str = "maya-tool",
+    package_name: str = "maya_tool",
+    module_name: str,
+    version: str = "0.1.0",
+) -> dict[str, str | int]:
+    return {
+        "schema_version": 1,
+        "target_name": target_name,
+        "platform": platform,
+        "maya_version": maya_version,
+        "python_version": python_version,
+        "distribution_name": distribution_name,
+        "package_name": package_name,
+        "module_name": module_name,
+        "version": version,
+    }
+
+
+def write_fake_artifact_wheel(
+    repo_root: Path,
+    *,
+    target_name: str,
+    artifact_target_name: str | None = None,
+    platform: str,
+    maya_version: str,
+    python_version: str,
+    module_name: str,
+    distribution_name: str = "maya-tool",
+    package_name: str = "maya_tool",
+    version: str = "0.1.0",
+    write_manifest: bool = True,
+) -> Path:
+    dist_dir = repo_root / "dist" / target_name
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    wheel_path = dist_dir / f"{distribution_name.replace('-', '_')}-{version}-py3-none-any.whl"
+    metadata = target_artifact_metadata(
+        target_name=artifact_target_name or target_name,
+        platform=platform,
+        maya_version=maya_version,
+        python_version=python_version,
+        distribution_name=distribution_name,
+        package_name=package_name,
+        module_name=module_name,
+        version=version,
+    )
+
+    with zipfile.ZipFile(wheel_path, "w") as archive:
+        archive.writestr(
+            f"{distribution_name.replace('-', '_')}-{version}.dist-info/{ARTIFACT_METADATA_FILENAME}",
+            json.dumps(metadata),
+        )
+
+    if write_manifest:
+        (dist_dir / ARTIFACT_MANIFEST_FILENAME).write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "wheel": wheel_path.name,
+                    "sha256": hashlib.sha256(wheel_path.read_bytes()).hexdigest(),
+                    "build": metadata,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return wheel_path
 
 
 class PipelineTests(unittest.TestCase):
@@ -166,9 +246,6 @@ class PipelineTests(unittest.TestCase):
             repo_root,
             library_filename="libpython3.11.so",
         )
-        wheel_path = repo_root / "dist" / "linux-2024" / "maya_tool-0.1.0-py3-none-any.whl"
-        wheel_path.parent.mkdir(parents=True, exist_ok=True)
-        wheel_path.write_text("", encoding="utf-8")
         config = resolve_config(
             repo_root,
             target="linux-2024",
@@ -189,6 +266,15 @@ class PipelineTests(unittest.TestCase):
             del command, cwd, verbose, error_code
             if env is not None:
                 captured_env.update(env)
+            write_fake_artifact_wheel(
+                repo_root,
+                target_name="linux-2024",
+                platform="linux",
+                maya_version="2024",
+                python_version="3.11",
+                module_name="MayaToolLinux",
+                write_manifest=False,
+            )
             return subprocess.CompletedProcess(args=["python"], returncode=0, stdout="", stderr="")
 
         with (
@@ -203,11 +289,14 @@ class PipelineTests(unittest.TestCase):
             ),
             mock.patch("maya_cython_compile.pipeline.prepare_build_tree", return_value=repo_root),
             mock.patch("maya_cython_compile.pipeline.run_command", side_effect=capture_run_command),
-            mock.patch("maya_cython_compile.pipeline.latest_wheel", return_value=wheel_path),
         ):
             payload = build(config, force=True)
 
+        wheel_path = repo_root / "dist" / "linux-2024" / "maya_tool-0.1.0-py3-none-any.whl"
+        manifest_path = repo_root / "dist" / "linux-2024" / ARTIFACT_MANIFEST_FILENAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["wheel"], str(wheel_path))
+        self.assertEqual(payload["artifact_manifest"], str(manifest_path))
         self.assertEqual(captured_env["MAYA_PYTHON_INCLUDE"], str(include_dir))
         self.assertEqual(captured_env["MAYA_PYTHON_LIBDIR"], str(library_file.parent))
         self.assertEqual(captured_env["MAYA_PYTHON_LIBNAME"], "python3.11")
@@ -217,6 +306,80 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(captured_env["MAYA_PYTHON_VERSION"], "3.11.9")
         self.assertEqual(captured_env["MAYA_PYTHON_EXT_SUFFIX"], ".so")
         self.assertEqual(captured_env["MAYA_PYTHON_SOABI"], "cpython-311")
+        self.assertEqual(manifest["wheel"], wheel_path.name)
+        self.assertEqual(manifest["sha256"], hashlib.sha256(wheel_path.read_bytes()).hexdigest())
+        self.assertEqual(manifest["build"]["target_name"], "linux-2024")
+        self.assertEqual(manifest["build"]["platform"], "linux")
+
+    def test_smoke_rejects_manifest_hash_mismatch(self) -> None:
+        repo_root = make_temp_repo("pipeline-smoke-hash-mismatch")
+        write_multi_target_build_config(repo_root)
+        wheel_path = write_fake_artifact_wheel(
+            repo_root,
+            target_name="linux-2024",
+            platform="linux",
+            maya_version="2024",
+            python_version="3.11",
+            module_name="MayaToolLinux",
+        )
+        manifest_path = repo_root / "dist" / "linux-2024" / ARTIFACT_MANIFEST_FILENAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["sha256"] = "0" * 64
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        config = resolve_config(
+            repo_root,
+            target="linux-2024",
+            maya_py=sys.executable,
+        )
+
+        with self.assertRaises(CliError) as exc:
+            smoke(config, force=True)
+
+        self.assertEqual(exc.exception.exit_code, SMOKE_ERROR)
+        self.assertIn(wheel_path.name, str(exc.exception))
+        self.assertIn("sha256=", str(exc.exception))
+
+    def test_prepare_build_tree_writes_bdist_wheel_metadata_hook_without_runtime_file(self) -> None:
+        repo_root = make_temp_repo("pipeline-build-tree")
+        write_multi_target_build_config(repo_root)
+        package_root = repo_root / "src" / "maya_tool"
+        package_root.mkdir(parents=True, exist_ok=True)
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+        (package_root / "_cy_logic.py").write_text("VALUE = 1\n", encoding="utf-8")
+        config = resolve_config(repo_root, target="linux-2024")
+
+        build_root = prepare_build_tree(config)
+
+        build_config = json.loads((build_root / "build-config.json").read_text(encoding="utf-8"))
+        setup_py = (build_root / "setup.py").read_text(encoding="utf-8")
+        self.assertNotIn("artifact_metadata_filename", build_config)
+        self.assertFalse((build_root / "src" / "maya_tool" / ARTIFACT_METADATA_FILENAME).exists())
+        self.assertIn('ARTIFACT_METADATA_FILE = "maya_cython_compile_artifact.json"', setup_py)
+        self.assertIn('cmdclass={"build_py": build_py, "bdist_wheel": bdist_wheel}', setup_py)
+
+    def test_smoke_rejects_wheel_from_other_target_even_in_selected_dist_dir(self) -> None:
+        repo_root = make_temp_repo("pipeline-smoke-wrong-target")
+        write_multi_target_build_config(repo_root)
+        write_fake_artifact_wheel(
+            repo_root,
+            target_name="linux-2024",
+            artifact_target_name="windows-2025",
+            platform="windows",
+            maya_version="2025",
+            python_version="3.11",
+            module_name="MayaToolWin",
+        )
+        config = resolve_config(
+            repo_root,
+            target="linux-2024",
+            maya_py=sys.executable,
+        )
+
+        with self.assertRaises(CliError) as exc:
+            smoke(config, force=True)
+
+        self.assertEqual(exc.exception.exit_code, SMOKE_ERROR)
+        self.assertIn("does not match selected target linux-2024", str(exc.exception))
 
     def test_render_target_environment_yaml_replaces_python_dependency(self) -> None:
         rendered = render_target_environment_yaml(

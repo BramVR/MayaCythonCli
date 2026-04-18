@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import sys
@@ -17,6 +18,8 @@ if str(SRC) not in sys.path:
 
 from maya_cython_compile.cli import build_parser, main
 from maya_cython_compile.errors import USAGE_ERROR
+from maya_cython_compile.pipeline import ARTIFACT_MANIFEST_FILENAME
+from maya_cython_compile.target_builder import ARTIFACT_METADATA_FILENAME
 from probe_fixtures import make_probe_completed_process, make_temp_repo, write_fake_maya_probe_layout
 
 
@@ -82,11 +85,31 @@ def write_multi_target_build_config(repo_root: Path) -> None:
     )
 
 
-def write_fake_wheel(repo_root: Path, *, target_name: str = "default") -> Path:
+def write_fake_wheel(
+    repo_root: Path,
+    *,
+    target_name: str = "default",
+    artifact_target_name: str | None = None,
+    platform: str = "windows",
+    maya_version: str = "2025",
+    python_version: str = "3.11",
+    module_name: str = "MayaTool",
+) -> Path:
     dist_dir = repo_root / "dist" / target_name
     dist_dir.mkdir(parents=True, exist_ok=True)
     wheel_path = dist_dir / "maya_tool-0.1.0-py3-none-any.whl"
     package_root = SRC / "maya_tool"
+    metadata = {
+        "schema_version": 1,
+        "target_name": artifact_target_name or target_name,
+        "platform": platform,
+        "maya_version": maya_version,
+        "python_version": python_version,
+        "distribution_name": "maya-tool",
+        "package_name": "maya_tool",
+        "module_name": module_name,
+        "version": "0.1.0",
+    }
 
     with zipfile.ZipFile(wheel_path, "w") as archive:
         for name in (
@@ -97,6 +120,21 @@ def write_fake_wheel(repo_root: Path, *, target_name: str = "default") -> Path:
             "tool_manifest.json",
         ):
             archive.write(package_root / name, arcname=f"maya_tool/{name}")
+        archive.writestr(f"maya_tool-0.1.0.dist-info/{ARTIFACT_METADATA_FILENAME}", json.dumps(metadata))
+
+    (dist_dir / ARTIFACT_MANIFEST_FILENAME).write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "wheel": wheel_path.name,
+                "sha256": hashlib.sha256(wheel_path.read_bytes()).hexdigest(),
+                "build": metadata,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     return wheel_path
 
@@ -162,7 +200,14 @@ class CliTests(unittest.TestCase):
     def test_main_smoke_json_with_fake_wheel(self) -> None:
         repo_root = make_temp_repo("cli-smoke")
         write_multi_target_build_config(repo_root)
-        write_fake_wheel(repo_root, target_name="linux-2024")
+        write_fake_wheel(
+            repo_root,
+            target_name="linux-2024",
+            platform="linux",
+            maya_version="2024",
+            python_version="3.11",
+            module_name="MayaToolLinux",
+        )
         stdout = io.StringIO()
 
         with redirect_stdout(stdout):

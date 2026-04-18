@@ -66,7 +66,7 @@ PowerShell wrappers under [../scripts](../scripts) are compatibility entrypoints
 
 Wheel builds do not run from the tracked source tree directly. The CLI prepares a disposable build root under `build/target-build/<target>/` through [../src/maya_cython_compile/target_builder.py](../src/maya_cython_compile/target_builder.py).
 
-That keeps packaging logic isolated while still generating target-specific build files.
+That keeps packaging logic isolated while still generating target-specific build files. The generated wheel now carries target identity in `*.dist-info/maya_cython_compile_artifact.json` instead of shipping builder metadata inside the runtime package payload.
 
 ## Target-scoped outputs
 
@@ -75,8 +75,11 @@ The pipeline now namespaces mutable outputs by selected target so different Maya
 - build env specs: `build/tmp/<target>/conda-environment.yml`
 - build temp files: `build/tmp/<target>/`
 - built wheels: `dist/<target>/`
+- artifact manifest: `dist/<target>/artifact.json`
 - smoke extraction: `build/smoke/<target>/wheel/`
 - assembled module payloads: `dist/module/<target>/<ModuleName>/`
+
+The manifest records the exact wheel name, its `sha256`, and the expected target metadata. `smoke` and `assemble` resolve through that manifest instead of scanning for the newest matching wheel name.
 
 ## Runtime split
 
@@ -97,5 +100,7 @@ The wheel is the intermediate artifact. The final Maya module payload is assembl
 
 - `dist/module/<target>/<ModuleName>/contents/scripts/`
 - `dist/module/<target>/<ModuleName>/<ModuleName>.mod`
+
+Before extraction, assembly validates the manifest-selected wheel hash and confirms that its embedded target metadata still matches the selected target name, platform, Maya version, Python version, distribution, package, module, and version. That prevents wheels built for one Maya target from being silently consumed by another target when filenames happen to overlap.
 
 Assembly skips wheel metadata directories ending in `.dist-info` and `.data`, and the `.mod` file's `PLATFORM:` token is derived from the selected target platform instead of being hardcoded to Windows.

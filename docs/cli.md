@@ -71,15 +71,18 @@ Creates the selected target's Conda build environment from [../environment.yml](
 
 ### `build`
 
-Builds the selected target's wheel inside the resolved Conda env. It validates the `mayapy` probe, rejects a target platform or Python-version mismatch, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, and writes the newest wheel to `dist/<target>/`.
+Builds the selected target's wheel inside the resolved Conda env. It validates the `mayapy` probe, rejects a target platform or Python-version mismatch, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, stamps target metadata into the wheel's `.dist-info` directory, and writes:
+
+- the wheel to `dist/<target>/`
+- the resolved artifact manifest to `dist/<target>/artifact.json`, including the selected wheel name and `sha256`
 
 ### `smoke`
 
-Finds the newest matching wheel in `dist/<target>/`, extracts it to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and executes the configured smoke script under `mayapy`.
+Reads `dist/<target>/artifact.json`, validates that the referenced wheel's embedded target metadata matches the selected target, extracts that wheel to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and executes the configured smoke script under `mayapy`. If the manifest is missing or the wheel metadata does not match, `smoke` fails and requires a fresh `build`.
 
 ### `assemble`
 
-Finds the newest matching wheel in `dist/<target>/`, extracts package files into `dist/module/<target>/<ModuleName>/contents/scripts/`, skips wheel metadata directories, and writes `<ModuleName>.mod`.
+Reads `dist/<target>/artifact.json`, validates the referenced wheel against the selected target, extracts package files into `dist/module/<target>/<ModuleName>/contents/scripts/`, skips wheel metadata directories, and writes `<ModuleName>.mod`.
 
 ### `run`
 
@@ -110,6 +113,7 @@ Dry-run behavior:
 - `run --dry-run` returns one dry-run payload per included step
 - target-aware dry-run payloads include the resolved `target`
 - `create-env --dry-run` also reports the resolved `python_version` and generated environment file path
+- build, smoke, and assemble dry runs also report the target artifact manifest path
 
 Doctor behavior:
 

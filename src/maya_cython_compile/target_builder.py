@@ -6,6 +6,8 @@ from pathlib import Path
 
 from .config import ResolvedConfig
 
+ARTIFACT_METADATA_FILENAME = "maya_cython_compile_artifact.json"
+
 
 def prepare_build_tree(config: ResolvedConfig) -> Path:
     build_root = config.repo_root / "build" / "target-build" / config.build.target_name
@@ -36,12 +38,27 @@ def prepare_build_tree(config: ResolvedConfig) -> Path:
     return build_root
 
 
+def render_artifact_metadata(config: ResolvedConfig) -> dict[str, str | int]:
+    return {
+        "schema_version": 1,
+        "target_name": config.build.target_name,
+        "platform": config.build.platform,
+        "maya_version": config.build.maya_version,
+        "python_version": config.build.python_version,
+        "distribution_name": config.build.distribution_name,
+        "package_name": config.build.package_name,
+        "module_name": config.build.module_name,
+        "version": config.build.version,
+    }
+
+
 def render_setup_py() -> str:
     return """import json
 import os
 from pathlib import Path
 
 from setuptools import Extension, setup
+from setuptools.command.bdist_wheel import bdist_wheel as _bdist_wheel
 from setuptools.command.build_py import build_py as _build_py
 
 try:
@@ -59,10 +76,11 @@ PACKAGE_DIR = ROOT / CONFIG["package_dir"]
 DIST_NAME = CONFIG["distribution_name"]
 VERSION = CONFIG["version"]
 COMPILED_MODULES = tuple(CONFIG["compiled_modules"])
-PACKAGE_DATA = CONFIG.get("package_data", [])
+PACKAGE_DATA = list(CONFIG.get("package_data", []))
 MAYA_PYTHON_INCLUDE = os.environ.get("MAYA_PYTHON_INCLUDE")
 MAYA_PYTHON_LIBDIR = os.environ.get("MAYA_PYTHON_LIBDIR")
 MAYA_PYTHON_LIBNAME = os.environ.get("MAYA_PYTHON_LIBNAME", "python311")
+ARTIFACT_METADATA_FILE = "maya_cython_compile_artifact.json"
 
 if not MAYA_PYTHON_INCLUDE or not MAYA_PYTHON_LIBDIR:
     raise RuntimeError("Set MAYA_PYTHON_INCLUDE and MAYA_PYTHON_LIBDIR before building.")
@@ -87,6 +105,16 @@ class build_py(_build_py):
                 target.unlink()
 
 
+class bdist_wheel(_bdist_wheel):
+    def write_wheelfile(self, wheelfile_base, generator=None):
+        metadata_path = Path(wheelfile_base) / ARTIFACT_METADATA_FILE
+        metadata_path.write_text(
+            json.dumps(CONFIG, indent=2) + "\\n",
+            encoding="utf-8",
+        )
+        super().write_wheelfile(wheelfile_base, generator=generator)
+
+
 extensions = [
     Extension(
         name=f"{PACKAGE_NAME}.{module_name}",
@@ -107,7 +135,7 @@ setup(
     package_data={PACKAGE_NAME: PACKAGE_DATA},
     include_package_data=True,
     zip_safe=False,
-    cmdclass={"build_py": build_py},
+    cmdclass={"build_py": build_py, "bdist_wheel": bdist_wheel},
     ext_modules=cythonize(
         extensions,
         compiler_directives={"language_level": "3"},
