@@ -24,6 +24,8 @@ maya-cython-compile --target windows-2025 smoke --force
 maya-cython-compile --target windows-2025 assemble --force
 maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 maya-cython-compile --target windows-2025 run --ensure-env --force
+maya-cython-compile --target windows-2025 verify --list-scenarios
+maya-cython-compile --target windows-2025 verify --scenario target-run --json --json-errors
 ```
 
 On Windows, the PowerShell wrappers under [`scripts/`](scripts/) stay thin delegates over the same target-based CLI. Use `.\scripts\run-pipeline.ps1 -Target windows-2025 -EnsureEnv -Force` when you want the full wrapper-driven flow without baking Maya version or platform defaults into the wrapper layer.
@@ -35,6 +37,16 @@ python -m ruff check src tests
 python -m mypy src tests
 python -m unittest discover -s tests
 ```
+
+Agent-facing verification:
+
+```powershell
+maya-cython-compile --target windows-2025 verify --scenario target-dry-run --json
+maya-cython-compile --target windows-2025 verify --scenario target-run --json --json-errors
+maya-cython-compile --target windows-2025 verify --scenario installed-cli-config-show --json
+```
+
+Each verify run writes a repro bundle under `build/agent-runs/` with `summary.json`, per-step logs, copied inputs, and a filesystem snapshot an agent can inspect before patching and rerunning.
 
 If the env is not activated, run the same commands with the `python.exe` under your resolved target `env_path`.
 

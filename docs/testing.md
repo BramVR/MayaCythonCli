@@ -34,3 +34,29 @@ maya-cython-compile --target windows-2025 config show
 maya-cython-compile --target windows-2025 doctor
 maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 ```
+
+## Agent-facing verification
+
+Use `verify` when you want one command an agent can rerun, inspect, and promote after a patch.
+
+```powershell
+maya-cython-compile --target windows-2025 verify --list-scenarios
+maya-cython-compile --target windows-2025 verify --scenario target-dry-run --json
+maya-cython-compile --target windows-2025 verify --scenario target-run --json --json-errors
+maya-cython-compile --target windows-2025 verify --scenario installed-cli-config-show --json
+```
+
+The default run bundle root is `build/agent-runs/`. Each run writes:
+
+- `summary.json` with `scenario`, `stage`, `exit_code`, `commands`, and target artifact paths
+- `steps/*.stdout.log` and `steps/*.stderr.log`
+- `inputs/` snapshots for `build-config.json`, `environment.yml`, and local config when present
+- `filesystem.txt` with the current target output tree snapshot
+
+Recommended loop:
+
+1. Run `verify --scenario target-run --json --json-errors`.
+2. If it fails, inspect `summary.json` and the failed step log.
+3. Patch the repo.
+4. Rerun the same verify scenario until it passes.
+5. Promote to `ruff`, `mypy`, and `unittest discover`.

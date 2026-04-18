@@ -28,6 +28,7 @@ def prepare_build_tree(config: ResolvedConfig) -> Path:
                 "version": config.build.version,
                 "compiled_modules": config.build.compiled_modules,
                 "package_data": config.build.package_data,
+                "artifact_metadata": render_artifact_metadata(config),
             },
             indent=2,
         )
@@ -77,6 +78,7 @@ DIST_NAME = CONFIG["distribution_name"]
 VERSION = CONFIG["version"]
 COMPILED_MODULES = tuple(CONFIG["compiled_modules"])
 PACKAGE_DATA = list(CONFIG.get("package_data", []))
+ARTIFACT_METADATA = dict(CONFIG["artifact_metadata"])
 MAYA_PYTHON_INCLUDE = os.environ.get("MAYA_PYTHON_INCLUDE")
 MAYA_PYTHON_LIBDIR = os.environ.get("MAYA_PYTHON_LIBDIR")
 MAYA_PYTHON_LIBNAME = os.environ.get("MAYA_PYTHON_LIBNAME", "python311")
@@ -109,7 +111,7 @@ class bdist_wheel(_bdist_wheel):
     def write_wheelfile(self, wheelfile_base, generator=None):
         metadata_path = Path(wheelfile_base) / ARTIFACT_METADATA_FILE
         metadata_path.write_text(
-            json.dumps(CONFIG, indent=2) + "\\n",
+            json.dumps(ARTIFACT_METADATA, indent=2) + "\\n",
             encoding="utf-8",
         )
         super().write_wheelfile(wheelfile_base, generator=generator)

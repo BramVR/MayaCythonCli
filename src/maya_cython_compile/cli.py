@@ -12,8 +12,9 @@ from typing import Any
 from .config import ResolvedConfig, resolve_config
 from .errors import INTERRUPTED_ERROR, USAGE_ERROR, CliError
 from .pipeline import assemble, build, create_env, doctor, run_pipeline, show_config, smoke
+from .verify import list_scenarios, run_verification
 
-BOOL_GLOBAL_FLAGS = {"--json", "--verbose", "--version"}
+BOOL_GLOBAL_FLAGS = {"--json", "--json-errors", "--verbose", "--version"}
 VALUE_GLOBAL_FLAGS = {
     "--repo-root",
     "--config",
@@ -38,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", help="Optional local config file path.")
     parser.add_argument("--target", help="Select a named build target.")
     parser.add_argument("--json", action="store_true", help="Emit JSON to stdout.")
+    parser.add_argument(
+        "--json-errors",
+        action="store_true",
+        help="Emit one JSON error object to stderr on failure.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Print subprocess commands to stderr.")
     parser.add_argument("--conda-exe", help="Override Conda executable path.")
     parser.add_argument("--env-path", help="Override local Conda environment path.")
@@ -74,6 +80,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("--skip-smoke", action="store_true", help="Skip mayapy smoke validation.")
     run_parser.add_argument("--skip-assemble", action="store_true", help="Skip module assembly.")
+
+    verify_parser = subparsers.add_parser("verify", help="Run agent-facing verification scenarios.")
+    verify_parser.add_argument(
+        "--scenario",
+        default="target-run",
+        help="Verification scenario name. Use --list-scenarios to inspect the built-ins.",
+    )
+    verify_parser.add_argument(
+        "--list-scenarios",
+        action="store_true",
+        help="List available verification scenarios and exit.",
+    )
+    verify_parser.add_argument(
+        "--run-root",
+        help="Optional directory where verify run bundles should be written.",
+    )
 
     return parser
 
@@ -120,13 +142,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         payload = dispatch(args, config)
     except CliError as exc:
-        print(str(exc), file=sys.stderr)
+        emit_error(
+            exc,
+            as_json=bool(getattr(args, "json_errors", False)),
+            command=getattr(args, "command", None),
+            target=getattr(args, "target", None),
+        )
         return exc.exit_code
     except ValueError as exc:
-        print(str(exc), file=sys.stderr)
+        emit_error(
+            CliError(str(exc), USAGE_ERROR, error_code="usage_error"),
+            as_json=bool(getattr(args, "json_errors", False)),
+            command=getattr(args, "command", None),
+            target=getattr(args, "target", None),
+        )
         return USAGE_ERROR
     except KeyboardInterrupt:
-        print("Interrupted.", file=sys.stderr)
+        emit_error(
+            CliError("Interrupted.", INTERRUPTED_ERROR, error_code="interrupted"),
+            as_json=bool(getattr(args, "json_errors", False)),
+            command=getattr(args, "command", None),
+            target=getattr(args, "target", None),
+        )
         return INTERRUPTED_ERROR
 
     emit(payload, as_json=bool(args.json))
@@ -176,6 +213,22 @@ def dispatch(args: argparse.Namespace, config: ResolvedConfig) -> dict[str, Any]
             skip_assemble=bool(args.skip_assemble),
             dry_run=bool(args.dry_run),
             force=bool(args.force),
+        )
+    if args.command == "verify":
+        if args.list_scenarios:
+            return {"scenarios": list_scenarios()}
+        run_root = None
+        if args.run_root:
+            candidate_run_root = Path(args.run_root)
+            run_root = (
+                config.repo_root / candidate_run_root
+                if not candidate_run_root.is_absolute()
+                else candidate_run_root
+            )
+        return run_verification(
+            config,
+            scenario_name=args.scenario,
+            run_root=run_root,
         )
     raise ValueError(f"Unsupported command: {args.command}")
 
@@ -228,6 +281,23 @@ def render_text(payload: dict[str, Any]) -> list[str]:
     if payload.get("dry_run"):
         return render_dry_run_text(payload)
 
+    if "scenarios" in payload:
+        lines.append("Verify scenarios")
+        for scenario in payload["scenarios"]:
+            if not isinstance(scenario, dict):
+                continue
+            lines.append(f"{scenario.get('name')}: {scenario.get('description')}")
+        return lines
+
+    if "scenario" in payload and "commands" in payload:
+        lines.append(f"Verify: {payload['scenario']}")
+        lines.append(f"ok: {payload.get('ok')}")
+        lines.append(f"stage: {payload.get('stage')}")
+        lines.append(f"run_dir: {payload.get('run_dir')}")
+        lines.append(f"summary_path: {payload.get('summary_path')}")
+        lines.append(f"message: {payload.get('message')}")
+        return lines
+
     if "checks" in payload:
         lines.append("Doctor")
         for key, value in payload["checks"].items():
@@ -261,6 +331,25 @@ def render_text(payload: dict[str, Any]) -> list[str]:
     for key, value in payload.items():
         lines.append(f"{key}: {value}")
     return lines
+
+
+def emit_error(exc: CliError, *, as_json: bool, command: str | None, target: str | None) -> None:
+    if as_json:
+        print(json.dumps(error_payload(exc, command=command, target=target), indent=2), file=sys.stderr)
+        return
+    print(str(exc), file=sys.stderr)
+
+
+def error_payload(exc: CliError, *, command: str | None, target: str | None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"ok": False, "message": str(exc), "exit_code": exc.exit_code}
+    if command:
+        payload["command"] = command
+    if target:
+        payload["target"] = target
+    if exc.error_code:
+        payload["error_code"] = exc.error_code
+    payload.update(exc.details)
+    return payload
 
 
 def render_dry_run_text(payload: dict[str, Any]) -> list[str]:

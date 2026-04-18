@@ -16,7 +16,7 @@ PROJECT_VERSION = "0.1.0"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from maya_cython_compile.cli import build_parser, main
+from maya_cython_compile.cli import build_parser, main, normalize_argv
 from maya_cython_compile.errors import USAGE_ERROR
 from maya_cython_compile.pipeline import ARTIFACT_MANIFEST_FILENAME
 from maya_cython_compile.target_builder import ARTIFACT_METADATA_FILENAME
@@ -181,6 +181,14 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.command, "build")
         self.assertTrue(args.dry_run)
         self.assertTrue(args.force)
+
+    def test_normalize_argv_keeps_global_flags_valid_after_subcommand(self) -> None:
+        normalized = normalize_argv(["build", "--json-errors", "--target", "linux-2024", "--dry-run"])
+
+        self.assertEqual(
+            normalized,
+            ["--json-errors", "--target", "linux-2024", "build", "--dry-run"],
+        )
 
     def test_build_parser_rejects_maya_version_override_for_assemble(self) -> None:
         parser = build_parser()
@@ -470,3 +478,27 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["maya_runtime"]["target_python_version"], "3.11")
         self.assertEqual(payload["maya_runtime"]["library_name"], "python3.11")
         self.assertEqual(payload["maya_runtime"]["library_file"], str(library_file))
+
+    def test_main_json_errors_emits_machine_readable_payload(self) -> None:
+        repo_root = make_temp_repo("cli-json-errors")
+        write_multi_target_build_config(repo_root)
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr):
+            exit_code = main(
+                [
+                    "--repo-root",
+                    str(repo_root),
+                    "--json-errors",
+                    "--target",
+                    "missing-target",
+                    "doctor",
+                ]
+            )
+
+        self.assertEqual(exit_code, USAGE_ERROR)
+        payload = json.loads(stderr.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["command"], "doctor")
+        self.assertEqual(payload["target"], "missing-target")
+        self.assertEqual(payload["error_code"], "usage_error")

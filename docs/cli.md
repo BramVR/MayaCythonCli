@@ -17,6 +17,7 @@ maya-cython-compile
   [--config PATH]
   [--target NAME]
   [--json]
+  [--json-errors]
   [--verbose]
   [--conda-exe PATH]
   [--env-path PATH]
@@ -30,6 +31,7 @@ maya-cython-compile
     | smoke [--dry-run] [--force]
     | assemble [--dry-run] [--force]
     | run [--dry-run] [--force] [--ensure-env] [--skip-smoke] [--skip-assemble]
+    | verify [--scenario NAME] [--list-scenarios] [--run-root PATH]
   )
 ```
 
@@ -43,6 +45,7 @@ Global flags are accepted before or after the subcommand.
 | `--config PATH` | alternate repo-local config file |
 | `--target NAME` | select a named build target |
 | `--json` | emit JSON to stdout |
+| `--json-errors` | emit one JSON error object to stderr on failure |
 | `--verbose` | print spawned subprocess commands to stderr |
 | `--conda-exe PATH` | override Conda executable or command |
 | `--env-path PATH` | override build env location |
@@ -94,6 +97,25 @@ Runs the full pipeline in order:
 
 `run --dry-run --ensure-env` now previews the same target-scoped step list even when the selected env does not exist yet. The dry run includes `create_env`, then renders the downstream `build`, `smoke`, and `assemble` plans as if that target env will be created by the real run.
 
+### `verify`
+
+Runs agent-facing verification scenarios and writes a durable repro bundle under `build/agent-runs/` by default.
+
+Current built-in scenarios:
+
+- `target-run` - runs `doctor`, then `create-env` when the selected env is missing, then `build`, `smoke`, and `assemble`
+- `target-dry-run` - runs `doctor`, then `run --dry-run --ensure-env`
+- `installed-cli-config-show` - builds the CLI wheel, installs it into a fresh virtualenv, and runs `config show` through the installed entrypoint
+
+Each verify run writes:
+
+- `summary.json` with scenario, stage, exit code, step list, and artifact paths
+- per-step stdout/stderr logs under `steps/`
+- input snapshots under `inputs/`
+- `filesystem.txt` with the current target output tree snapshot
+
+Use `verify --list-scenarios` to inspect the built-ins. Use `--run-root PATH` when you want the repro bundles outside the default `build/agent-runs/` tree.
+
 ## Output contract
 
 Success:
@@ -104,7 +126,8 @@ Success:
 Errors:
 
 - errors are plain text on stderr
-- errors are not JSON, even when `--json` is set
+- `--json` does not change the error stream
+- `--json-errors` writes one JSON object to stderr on failure
 - verbose subprocess tracing is written to stderr
 
 Dry-run behavior:
@@ -165,4 +188,7 @@ maya-cython-compile --target windows-2025 smoke --force
 maya-cython-compile --target windows-2025 assemble --force
 maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 maya-cython-compile --target windows-2025 run --ensure-env --force
+maya-cython-compile --target windows-2025 verify --list-scenarios
+maya-cython-compile --target windows-2025 verify --scenario target-dry-run --json
+maya-cython-compile --target windows-2025 verify --scenario target-run --json --json-errors
 ```

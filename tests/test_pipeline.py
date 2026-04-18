@@ -398,8 +398,11 @@ class PipelineTests(unittest.TestCase):
         build_config = json.loads((build_root / "build-config.json").read_text(encoding="utf-8"))
         setup_py = (build_root / "setup.py").read_text(encoding="utf-8")
         self.assertNotIn("artifact_metadata_filename", build_config)
+        self.assertEqual(build_config["artifact_metadata"]["target_name"], "linux-2024")
+        self.assertEqual(build_config["artifact_metadata"]["module_name"], "MayaToolLinux")
         self.assertFalse((build_root / "src" / "maya_tool" / ARTIFACT_METADATA_FILENAME).exists())
         self.assertIn('ARTIFACT_METADATA_FILE = "maya_cython_compile_artifact.json"', setup_py)
+        self.assertIn('ARTIFACT_METADATA = dict(CONFIG["artifact_metadata"])', setup_py)
         self.assertIn('cmdclass={"build_py": build_py, "bdist_wheel": bdist_wheel}', setup_py)
 
     def test_smoke_rejects_wheel_from_other_target_even_in_selected_dist_dir(self) -> None:
