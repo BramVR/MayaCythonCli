@@ -48,6 +48,8 @@ maya-cython-compile --target windows-2025 verify --scenario installed-cli-config
 
 Each verify run writes a repro bundle under `build/agent-runs/` with `summary.json`, per-step logs, copied inputs, and a filesystem snapshot an agent can inspect before patching and rerunning.
 
+GitHub Actions keeps the hosted CI path small by running `ruff`, `mypy`, `unittest`, and the non-Maya `installed-cli-config-show` verify scenario on `windows-latest`.
+
 If the env is not activated, run the same commands with the `python.exe` under your resolved target `env_path`.
 
 Core files:

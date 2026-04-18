@@ -19,6 +19,14 @@ python -m unittest discover -s tests
 
 If the env is not activated, run the same commands with the `python.exe` under your resolved target `env_path`.
 
+GitHub Actions runs the same lint, type-check, and unittest commands on `windows-latest`, then promotes to:
+
+```powershell
+python -m maya_cython_compile --repo-root . --target windows-2025 verify --scenario installed-cli-config-show --json --json-errors
+```
+
+That CI path stays cheap because it does not require Maya or a self-hosted runner, but it still exercises wheel packaging plus the installed CLI entrypoint.
+
 ## What they cover
 
 - `ruff check src tests` - lint and import ordering

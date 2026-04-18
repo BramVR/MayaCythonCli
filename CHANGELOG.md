@@ -22,6 +22,7 @@
 
 - Tooling: add `ruff` and `mypy` checks for `src/` and `tests/`.
 - Build flow: harden target artifact selection so `build`, `smoke`, and `assemble` validate the manifest-selected wheel instead of loosely consuming whichever matching wheel name was newest.
+- CI: add a minimal GitHub Actions workflow on `windows-latest` that runs `ruff`, `mypy`, `unittest`, and the non-Maya `installed-cli-config-show` verify scenario, then uploads verify bundles on failure.
 
 ## 0.1.0 - 2026-04-15
 
