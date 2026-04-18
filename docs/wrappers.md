@@ -7,9 +7,9 @@ read_when:
 
 # Wrappers
 
-The repo still ships PowerShell entrypoints under [../scripts](../scripts), but they delegate into `maya_cython_compile` rather than owning pipeline logic themselves.
+The repo still ships PowerShell entrypoints under [../scripts](../scripts), but they remain Windows-oriented compatibility shims. They delegate into `maya_cython_compile` rather than owning pipeline logic themselves.
 
-The four public wrappers share the internal helper [../scripts/_invoke-cli.ps1](../scripts/_invoke-cli.ps1) so interpreter fallback and CLI dispatch stay consistent in one place.
+The five public wrappers share the internal helper [../scripts/_invoke-cli.ps1](../scripts/_invoke-cli.ps1) so interpreter fallback and CLI dispatch stay consistent in one place.
 
 ## Available wrappers
 
@@ -17,6 +17,7 @@ The four public wrappers share the internal helper [../scripts/_invoke-cli.ps1](
 - [../scripts/build-package.ps1](../scripts/build-package.ps1)
 - [../scripts/smoke-package.ps1](../scripts/smoke-package.ps1)
 - [../scripts/assemble-module.ps1](../scripts/assemble-module.ps1)
+- [../scripts/run-pipeline.ps1](../scripts/run-pipeline.ps1)
 
 ## Current wrapper behavior
 
@@ -26,6 +27,7 @@ Each wrapper:
 - sets `PYTHONPATH` to `<repoRoot>/src`
 - forwards `-Target` to CLI `--target` when provided
 - forwards `-EnvPath` and `-MayaPy` only when that wrapper exposes them and you pass them explicitly
+- forwards the full `run` workflow flags from `run-pipeline.ps1` as `-EnsureEnv`, `-SkipSmoke`, and `-SkipAssemble`
 - forwards the matching safety flags as `-DryRun` and `-Force`
 - dispatches into `python -m maya_cython_compile ...`
 
@@ -41,9 +43,12 @@ If no interpreter is found, the wrapper throws.
 
 Wrapper defaults now defer to the Python CLI and repo config:
 
+- wrappers stay PowerShell-only convenience entrypoints; the Python CLI remains the source of truth for behavior
 - no wrapper forces a shared `env_path`
 - no wrapper forces a `mayapy` value unless you pass one
+- no wrapper encodes Maya version or platform defaults outside the selected target and resolved config
 - `assemble-module.ps1` no longer accepts `-MayaVersion` or `-ModuleName`; assembly always uses the selected target's `module_name` and `maya_version`
+- `run-pipeline.ps1` mirrors the CLI `run` command instead of asking users to chain wrapper scripts manually
 - `-Target <name>` is the normal way to select a named build target explicitly
 
 Pass `-EnvPath` or `-MayaPy` only when you need to override the resolved config for that invocation.

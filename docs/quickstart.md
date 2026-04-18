@@ -45,7 +45,7 @@ If you build multiple targets from one repo clone, keep the default target-speci
 pip install -e .
 ```
 
-The PowerShell wrappers in [wrappers.md](wrappers.md) can still be used if you do not want to install the CLI globally.
+The PowerShell wrappers in [wrappers.md](wrappers.md) can still be used on Windows if you do not want to install the CLI globally. They stay thin delegates over the Python CLI, so use `-Target` instead of expecting wrapper-specific Maya version or platform defaults.
 
 ## Start with doctor
 
@@ -119,6 +119,7 @@ The assembled `.mod` file now derives its module name, `MAYAVERSION:`, and `PLAT
 
 ```powershell
 maya-cython-compile --target windows-2025 run --dry-run
+maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 maya-cython-compile --target windows-2025 run --ensure-env --force
 ```
 
@@ -128,6 +129,13 @@ Useful variants:
 maya-cython-compile --target windows-2025 run --skip-smoke
 maya-cython-compile --target windows-2025 run --skip-assemble
 maya-cython-compile --target windows-2025 run --force
+```
+
+Windows wrapper equivalents:
+
+```powershell
+.\scripts\run-pipeline.ps1 -Target windows-2025 -DryRun
+.\scripts\run-pipeline.ps1 -Target windows-2025 -EnsureEnv -Force
 ```
 
 Sharing one Conda env across multiple targets is only safe when those targets use the same Python ABI and compatible build dependencies. The default `.conda/<target>` layout avoids cross-target wheel and interpreter drift.

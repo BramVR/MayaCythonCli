@@ -291,6 +291,53 @@ class CliTests(unittest.TestCase):
             str(repo_root / "build" / "tmp" / "windows-2025" / "conda-environment.yml"),
         )
 
+    def test_main_run_dry_run_json_previews_full_workflow_when_ensure_env_is_set(self) -> None:
+        repo_root = make_temp_repo("cli-run-dry-run-ensure-env")
+        write_multi_target_build_config(repo_root)
+        mayapy, include_dir, library_file = write_fake_maya_probe_layout(
+            repo_root,
+            library_filename="libpython3.11.so",
+        )
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout), mock.patch(
+            "maya_cython_compile.pipeline.subprocess.run",
+            return_value=make_probe_completed_process(
+                mayapy=mayapy,
+                include_dir=include_dir,
+                library_file=library_file,
+                runtime_platform="linux",
+            ),
+        ):
+            exit_code = main(
+                [
+                    "--repo-root",
+                    str(repo_root),
+                    "--target",
+                    "linux-2024",
+                    "--conda-exe",
+                    sys.executable,
+                    "--maya-py",
+                    str(mayapy),
+                    "run",
+                    "--json",
+                    "--dry-run",
+                    "--ensure-env",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["dry_run"])
+        self.assertEqual(
+            list(payload["steps"]),
+            ["create_env", "build", "smoke", "assemble"],
+        )
+        self.assertEqual(payload["steps"]["create_env"]["target"], "linux-2024")
+        self.assertEqual(payload["steps"]["build"]["target"], "linux-2024")
+        self.assertEqual(payload["steps"]["smoke"]["wheel"], "after build step")
+        self.assertEqual(payload["steps"]["assemble"]["wheel"], "after build step")
+
     def test_main_build_dry_run_json_lists_cleanup_targets(self) -> None:
         repo_root = make_temp_repo("cli-build-dry-run")
         write_multi_target_build_config(repo_root)

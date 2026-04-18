@@ -23,7 +23,7 @@ If the env is not activated, run the same commands with the `python.exe` under y
 
 - `ruff check src tests` - lint and import ordering
 - `mypy src tests` - type-checking for the CLI and tests
-- `unittest discover -s tests` - CLI, config, and exit-code regression coverage
+- `unittest discover -s tests` - CLI, pipeline, wrapper-forwarding, config, and exit-code regression coverage
 
 ## Build-path verification
 
@@ -32,5 +32,5 @@ When you are changing pipeline behavior, also validate the command surface you t
 ```powershell
 maya-cython-compile --target windows-2025 config show
 maya-cython-compile --target windows-2025 doctor
-maya-cython-compile --target windows-2025 run --dry-run
+maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 ```

@@ -60,7 +60,7 @@ It owns:
 - smoke validation under `mayapy`
 - Maya module assembly
 
-PowerShell wrappers under [../scripts](../scripts) are compatibility entrypoints only.
+PowerShell wrappers under [../scripts](../scripts) are compatibility entrypoints only. They stay Windows-only thin shims over the CLI surface, including the full `run` workflow, and they do not carry separate Maya version or platform defaults outside the selected target and resolved config.
 
 ## Temporary build tree
 

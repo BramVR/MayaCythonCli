@@ -22,8 +22,11 @@ maya-cython-compile --target windows-2025 build --dry-run
 maya-cython-compile --target windows-2025 build --force
 maya-cython-compile --target windows-2025 smoke --force
 maya-cython-compile --target windows-2025 assemble --force
+maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 maya-cython-compile --target windows-2025 run --ensure-env --force
 ```
+
+On Windows, the PowerShell wrappers under [`scripts/`](scripts/) stay thin delegates over the same target-based CLI. Use `.\scripts\run-pipeline.ps1 -Target windows-2025 -EnsureEnv -Force` when you want the full wrapper-driven flow without baking Maya version or platform defaults into the wrapper layer.
 
 Verification, from the selected target env created by `maya-cython-compile create-env`:
 

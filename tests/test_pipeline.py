@@ -26,6 +26,7 @@ from maya_cython_compile.pipeline import (
     probe_maya_runtime,
     python_version_matches_target,
     render_target_environment_yaml,
+    run_pipeline,
     smoke,
 )
 from maya_cython_compile.target_builder import ARTIFACT_METADATA_FILENAME, prepare_build_tree
@@ -465,6 +466,60 @@ class PipelineTests(unittest.TestCase):
         self.assertNotEqual(module_roots["windows-2025"], module_roots["linux-2024"])
         self.assertNotEqual(module_roots["windows-2025"], module_roots["macos-2026"])
         self.assertNotEqual(module_roots["linux-2024"], module_roots["macos-2026"])
+
+    def test_run_pipeline_executes_full_workflow_in_order_when_ensure_env_creates_missing_env(self) -> None:
+        repo_root = make_temp_repo("pipeline-run-order")
+        write_multi_target_build_config(repo_root)
+        config = resolve_config(
+            repo_root,
+            target="linux-2024",
+            conda_exe=sys.executable,
+            maya_py=sys.executable,
+        )
+        calls: list[str] = []
+
+        def fake_create_env(*args: object, **kwargs: object) -> dict[str, str]:
+            del args, kwargs
+            calls.append("create_env")
+            return {"env_path": "created"}
+
+        def fake_build(*args: object, **kwargs: object) -> dict[str, str]:
+            del args, kwargs
+            calls.append("build")
+            return {"wheel": "built.whl"}
+
+        def fake_smoke(*args: object, **kwargs: object) -> dict[str, list[str]]:
+            del args, kwargs
+            calls.append("smoke")
+            return {"smoke_output": ["ok"]}
+
+        def fake_assemble(*args: object, **kwargs: object) -> dict[str, str]:
+            del args, kwargs
+            calls.append("assemble")
+            return {"module_root": "module"}
+
+        with (
+            mock.patch(
+                "maya_cython_compile.pipeline.create_env",
+                side_effect=fake_create_env,
+            ),
+            mock.patch(
+                "maya_cython_compile.pipeline.build",
+                side_effect=fake_build,
+            ),
+            mock.patch(
+                "maya_cython_compile.pipeline.smoke",
+                side_effect=fake_smoke,
+            ),
+            mock.patch(
+                "maya_cython_compile.pipeline.assemble",
+                side_effect=fake_assemble,
+            ),
+        ):
+            payload = run_pipeline(config, ensure_env=True, force=True)
+
+        self.assertEqual(calls, ["create_env", "build", "smoke", "assemble"])
+        self.assertEqual(list(payload), ["create_env", "build", "smoke", "assemble"])
 
     def test_render_target_environment_yaml_replaces_python_dependency(self) -> None:
         rendered = render_target_environment_yaml(

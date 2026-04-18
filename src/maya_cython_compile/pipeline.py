@@ -211,8 +211,9 @@ def build(
     verbose: bool = False,
     dry_run: bool = False,
     force: bool = False,
+    require_env: bool = True,
 ) -> dict[str, Any]:
-    if not config.local.env_path.exists():
+    if require_env and not config.local.env_path.exists():
         raise CliError(
             f"Conda environment missing: {config.local.env_path}. Run create-env first.",
             DEPENDENCY_ERROR,
@@ -393,8 +394,9 @@ def run_pipeline(
     force: bool = False,
 ) -> dict[str, Any]:
     steps: dict[str, Any] = {}
+    env_missing = not config.local.env_path.exists()
     if dry_run:
-        if ensure_env and not config.local.env_path.exists():
+        if ensure_env and env_missing:
             steps["create_env"] = create_env(
                 config,
                 verbose=verbose,
@@ -406,6 +408,7 @@ def run_pipeline(
             verbose=verbose,
             dry_run=True,
             force=force,
+            require_env=not (ensure_env and env_missing),
         )
         if not skip_smoke:
             steps["smoke"] = smoke(

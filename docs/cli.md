@@ -92,6 +92,8 @@ Runs the full pipeline in order:
 3. `smoke` unless `--skip-smoke`
 4. `assemble` unless `--skip-assemble`
 
+`run --dry-run --ensure-env` now previews the same target-scoped step list even when the selected env does not exist yet. The dry run includes `create_env`, then renders the downstream `build`, `smoke`, and `assemble` plans as if that target env will be created by the real run.
+
 ## Output contract
 
 Success:
@@ -110,6 +112,7 @@ Dry-run behavior:
 - `--dry-run` previews deletions and subprocesses
 - it does not change files
 - `run --dry-run` returns one dry-run payload per included step
+- `run --dry-run --ensure-env` can preview the full workflow before the selected target env exists
 - target-aware dry-run payloads include the resolved `target`
 - `assemble --dry-run` also reports the selected target's `target_platform` and `target_maya_version`
 - `create-env --dry-run` also reports the resolved `python_version` and generated environment file path
@@ -160,5 +163,6 @@ maya-cython-compile --target windows-2025 create-env --dry-run
 maya-cython-compile --target windows-2025 build --force --verbose
 maya-cython-compile --target windows-2025 smoke --force
 maya-cython-compile --target windows-2025 assemble --force
+maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 maya-cython-compile --target windows-2025 run --ensure-env --force
 ```
