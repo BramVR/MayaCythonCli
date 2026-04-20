@@ -37,28 +37,39 @@ def make_probe_completed_process(
     include_dir: Path,
     library_file: Path,
     runtime_platform: str,
+    include_include_config_vars: bool = True,
+    include_library_config_vars: bool = True,
+    python_prefix: Path | None = None,
+    python_base_prefix: Path | None = None,
+    reported_include_dir: Path | None = None,
+    reported_platinclude_dir: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    runtime_prefix = python_prefix or mayapy.parent.parent
+    runtime_base_prefix = python_base_prefix or runtime_prefix
+    config_vars = {"EXT_SUFFIX": ".pyd" if runtime_platform == "windows" else ".so", "SOABI": "cpython-311"}
+    if include_include_config_vars:
+        config_vars.update({"INCLUDEPY": str(include_dir), "CONFINCLUDEPY": str(include_dir)})
+    if include_library_config_vars:
+        config_vars.update(
+            {
+                "LIBDIR": str(library_file.parent),
+                "LIBPL": str(library_file.parent),
+                "LIBRARY": library_file.name,
+                "LDLIBRARY": library_file.name,
+                "INSTSONAME": library_file.name,
+            }
+        )
     payload = {
         "maya_py": str(mayapy),
         "runtime_platform": runtime_platform,
         "sys_platform": {"windows": "win32", "linux": "linux", "macos": "darwin"}[runtime_platform],
         "sysconfig_platform": runtime_platform,
         "python_version": "3.11.9",
-        "python_prefix": str(mayapy.parent.parent),
-        "python_base_prefix": str(mayapy.parent.parent),
-        "include_dir": str(include_dir),
-        "platinclude_dir": str(include_dir),
-        "config_vars": {
-            "INCLUDEPY": str(include_dir),
-            "CONFINCLUDEPY": str(include_dir),
-            "LIBDIR": str(library_file.parent),
-            "LIBPL": str(library_file.parent),
-            "LIBRARY": library_file.name,
-            "LDLIBRARY": library_file.name,
-            "INSTSONAME": library_file.name,
-            "EXT_SUFFIX": ".pyd" if runtime_platform == "windows" else ".so",
-            "SOABI": "cpython-311",
-        },
+        "python_prefix": str(runtime_prefix),
+        "python_base_prefix": str(runtime_base_prefix),
+        "include_dir": str(reported_include_dir or include_dir),
+        "platinclude_dir": str(reported_platinclude_dir or include_dir),
+        "config_vars": config_vars,
     }
     return subprocess.CompletedProcess(
         args=[str(mayapy), "-c", "probe"],

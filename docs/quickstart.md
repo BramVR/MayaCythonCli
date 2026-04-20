@@ -62,7 +62,7 @@ maya-cython-compile --target windows-2025 doctor --json
 - whether `mayapy` exists
 - whether the `mayapy` probe succeeded
 - whether the probed runtime platform matches the selected target
-- the resolved Python include path and Python library metadata reported by `mayapy`
+- the resolved Python include path and Python library metadata, with fallback to standard Maya and Python runtime include and library layouts when `mayapy` leaves those paths blank or points at missing directories
 
 ## Create the build env
 
@@ -83,7 +83,7 @@ maya-cython-compile --target windows-2025 build --force
 The build step:
 
 - validates the env exists
-- probes `mayapy` directly for Python include and library metadata
+- probes `mayapy` directly for Python include and library metadata, with fallback discovery for standard Maya and Python runtime include and library layouts when needed
 - rejects a selected target when its platform or Python version does not match the probed `mayapy` runtime
 - cleans prior target-scoped build artifacts when `--force` allows it
 - prepares `build/target-build/<target>/`

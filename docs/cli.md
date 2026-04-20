@@ -65,7 +65,7 @@ Prints the fully resolved config from tracked build metadata, local config, envi
 
 ### `doctor`
 
-Checks whether the selected target's Conda executable, env path, and `mayapy` path exist, then runs a target-aware `mayapy` probe that reports runtime platform, Python version, include path, and Python library metadata from `sysconfig`. The checks include both platform and Python-version matches against the selected target.
+Checks whether the selected target's Conda executable, env path, and `mayapy` path exist, then runs a target-aware `mayapy` probe that reports runtime platform, Python version, include path, and Python library metadata. The probe prefers `sysconfig` and falls back to standard Maya and Python runtime include and library layouts when Maya leaves those paths blank or points at missing directories. The checks include both platform and Python-version matches against the selected target.
 
 ### `create-env`
 

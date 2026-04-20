@@ -224,6 +224,47 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(payload.extension_suffix, ".so")
         self.assertEqual(payload.soabi, "cpython-311")
 
+    def test_probe_maya_runtime_infers_windows_runtime_metadata_from_layout(self) -> None:
+        repo_root = make_temp_repo("pipeline-probe-windows-inferred-runtime")
+        mayapy, include_dir, library_file = write_fake_maya_probe_layout(
+            repo_root,
+            library_filename="python311.lib",
+        )
+        python_prefix = mayapy.parent.parent / "Python"
+        python_prefix.mkdir(parents=True, exist_ok=True)
+        reported_include_dir = python_prefix / "Include"
+
+        with mock.patch(
+            "maya_cython_compile.pipeline.subprocess.run",
+            return_value=make_probe_completed_process(
+                mayapy=mayapy,
+                include_dir=include_dir,
+                library_file=library_file,
+                runtime_platform="windows",
+                include_include_config_vars=False,
+                include_library_config_vars=False,
+                python_prefix=python_prefix,
+                python_base_prefix=python_prefix,
+                reported_include_dir=reported_include_dir,
+                reported_platinclude_dir=reported_include_dir,
+            ),
+        ):
+            payload = probe_maya_runtime(
+                mayapy,
+                target_platform="windows",
+                target_python_version="3.11",
+            )
+
+        self.assertTrue(payload.probe_succeeded)
+        self.assertEqual(payload.runtime_platform, "windows")
+        self.assertTrue(payload.platform_matches_target)
+        self.assertTrue(payload.python_matches_target)
+        self.assertEqual(payload.include_dir, str(include_dir))
+        self.assertEqual(payload.library_dir, str(library_file.parent))
+        self.assertEqual(payload.library_name, "python311")
+        self.assertEqual(payload.library_file, str(library_file))
+        ensure_maya_build_runtime(payload, mayapy)
+
     def test_ensure_maya_build_runtime_rejects_target_platform_mismatch(self) -> None:
         repo_root = make_temp_repo("pipeline-probe-mismatch")
         mayapy, include_dir, library_file = write_fake_maya_probe_layout(

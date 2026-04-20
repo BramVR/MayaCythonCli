@@ -507,13 +507,22 @@ def probe_maya_runtime(
     runtime_platform = payload.get("runtime_platform")
     python_version = payload.get("python_version")
     config_vars = payload.get("config_vars", {})
-    include_dir = _resolve_existing_path(
+    include_dir = _resolve_python_include_dir(
         payload.get("include_dir"),
         payload.get("platinclude_dir"),
-        config_vars.get("INCLUDEPY"),
-        config_vars.get("CONFINCLUDEPY"),
+        config_vars,
+        python_prefix=payload.get("python_prefix"),
+        python_base_prefix=payload.get("python_base_prefix"),
+        maya_py=maya_py,
     )
-    library_file = _resolve_python_library_file(config_vars)
+    library_file = _resolve_python_library_file(
+        config_vars,
+        python_version=python_version,
+        python_prefix=payload.get("python_prefix"),
+        python_base_prefix=payload.get("python_base_prefix"),
+        maya_py=maya_py,
+        runtime_platform=runtime_platform,
+    )
     library_dir = str(library_file.parent) if library_file else None
     library_name = _library_name_from_filename(library_file.name) if library_file else None
     platform_matches_target = None
@@ -602,7 +611,59 @@ def _resolve_existing_path(*raw_paths: str | None) -> Path | None:
     return None
 
 
-def _resolve_python_library_file(config_vars: dict[str, Any]) -> Path | None:
+def _resolve_python_include_dir(
+    include_dir: str | None,
+    platinclude_dir: str | None,
+    config_vars: dict[str, Any],
+    *,
+    python_prefix: str | None,
+    python_base_prefix: str | None,
+    maya_py: Path,
+) -> Path | None:
+    resolved = _resolve_existing_path(
+        include_dir,
+        platinclude_dir,
+        config_vars.get("INCLUDEPY"),
+        config_vars.get("CONFINCLUDEPY"),
+    )
+    if resolved is not None:
+        return resolved
+
+    candidate_dirs: list[Path] = []
+    for raw_prefix in (python_prefix, python_base_prefix):
+        if not raw_prefix:
+            continue
+        prefix = Path(raw_prefix)
+        candidate_dirs.extend(
+            [
+                prefix / "include",
+                prefix / "Include",
+                prefix.parent / "include",
+                prefix.parent / "Include",
+            ]
+        )
+
+    maya_runtime_root = maya_py.resolve().parent.parent if maya_py.exists() else maya_py.parent.parent
+    candidate_dirs.extend(
+        [
+            maya_runtime_root / "include",
+            maya_runtime_root / "Include",
+            maya_runtime_root / "Python" / "include",
+            maya_runtime_root / "Python" / "Include",
+        ]
+    )
+    return _find_existing_directory(candidate_dirs)
+
+
+def _resolve_python_library_file(
+    config_vars: dict[str, Any],
+    *,
+    python_version: str | None,
+    python_prefix: str | None,
+    python_base_prefix: str | None,
+    maya_py: Path,
+    runtime_platform: str | None,
+) -> Path | None:
     candidate_names: list[str] = []
     for key in ("LIBRARY", "LDLIBRARY", "INSTSONAME"):
         raw_value = config_vars.get(key)
@@ -622,21 +683,99 @@ def _resolve_python_library_file(config_vars: dict[str, Any]) -> Path | None:
         if path.exists():
             candidate_dirs.append(path)
 
-    seen: set[Path] = set()
-    unique_dirs: list[Path] = []
-    for candidate_dir in candidate_dirs:
-        resolved = candidate_dir.resolve()
-        if resolved in seen:
+    candidate_names.extend(_inferred_python_library_names(python_version, runtime_platform))
+    candidate_dirs.extend(_inferred_python_library_dirs(python_prefix, python_base_prefix, maya_py))
+    return _find_python_library_file(candidate_dirs, candidate_names)
+
+
+def _inferred_python_library_names(
+    python_version: str | None,
+    runtime_platform: str | None,
+) -> list[str]:
+    if not python_version:
+        return []
+    version_parts = normalized_python_version(python_version)
+    if len(version_parts) < 2:
+        return []
+    major, minor = version_parts[:2]
+    if runtime_platform == "windows":
+        return [f"python{major}{minor}.lib"]
+    return [
+        f"libpython{major}.{minor}.so",
+        f"libpython{major}.{minor}.so.1.0",
+        f"libpython{major}.{minor}.a",
+        f"libpython{major}.{minor}.dylib",
+    ]
+
+
+def _inferred_python_library_dirs(
+    python_prefix: str | None,
+    python_base_prefix: str | None,
+    maya_py: Path,
+) -> list[Path]:
+    candidate_dirs: list[Path] = []
+    for raw_prefix in (python_prefix, python_base_prefix):
+        if not raw_prefix:
             continue
-        seen.add(resolved)
-        unique_dirs.append(candidate_dir)
+        prefix = Path(raw_prefix)
+        candidate_dirs.extend(
+            [
+                prefix / "lib",
+                prefix / "libs",
+                prefix.parent / "lib",
+                prefix.parent / "libs",
+            ]
+        )
+
+    maya_runtime_root = maya_py.resolve().parent.parent if maya_py.exists() else maya_py.parent.parent
+    candidate_dirs.extend(
+        [
+            maya_runtime_root / "lib",
+            maya_runtime_root / "libs",
+            maya_runtime_root / "Python" / "lib",
+            maya_runtime_root / "Python" / "libs",
+        ]
+    )
+    return candidate_dirs
+
+
+def _find_python_library_file(candidate_dirs: list[Path], candidate_names: list[str]) -> Path | None:
+    unique_dirs = _unique_existing_directories(candidate_dirs)
+
+    seen_names: set[str] = set()
+    unique_names: list[str] = []
+    for candidate_name in candidate_names:
+        normalized = candidate_name.lower()
+        if normalized in seen_names:
+            continue
+        seen_names.add(normalized)
+        unique_names.append(candidate_name)
 
     for candidate_dir in unique_dirs:
-        for candidate_name in candidate_names:
+        for candidate_name in unique_names:
             candidate_file = candidate_dir / candidate_name
             if candidate_file.exists():
                 return candidate_file
     return None
+
+
+def _find_existing_directory(candidate_dirs: list[Path]) -> Path | None:
+    unique_dirs = _unique_existing_directories(candidate_dirs)
+    return unique_dirs[0] if unique_dirs else None
+
+
+def _unique_existing_directories(candidate_dirs: list[Path]) -> list[Path]:
+    seen_dirs: set[Path] = set()
+    unique_dirs: list[Path] = []
+    for candidate_dir in candidate_dirs:
+        if not candidate_dir.exists():
+            continue
+        resolved = candidate_dir.resolve()
+        if resolved in seen_dirs:
+            continue
+        seen_dirs.add(resolved)
+        unique_dirs.append(candidate_dir)
+    return unique_dirs
 
 
 def _library_name_from_filename(filename: str) -> str:

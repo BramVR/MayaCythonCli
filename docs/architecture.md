@@ -86,11 +86,11 @@ The manifest records the exact wheel name, its `sha256`, and the expected target
 The pipeline separates build-time Python from Maya runtime validation:
 
 - Conda env - used for `Cython`, `setuptools`, and wheel creation, with the interpreter pinned per target
-- `mayapy` - used for runtime metadata discovery via `sysconfig` and for smoke validation
+- `mayapy` - used for runtime metadata discovery and for smoke validation
 
 This lets the repo run from a normal Python environment without making `mayapy` the primary tool runner.
 
-The runtime probe is explicit instead of path-inferred. The pipeline executes `mayapy -c ...`, captures a JSON payload with runtime platform, Python version, include path, and library metadata, then validates that payload against the selected target before the build starts.
+The runtime probe is explicit. The pipeline executes `mayapy -c ...`, captures a JSON payload with runtime platform, Python version, include path, and library metadata, prefers explicit `sysconfig` values when Maya reports them, and falls back to standard Maya and Python runtime include and library layouts when those paths are blank or invalid. It then validates that resolved runtime metadata against the selected target before the build starts.
 
 One shared Conda env is only safe when every target it serves uses the same Python ABI and compatible toolchain dependencies. Because the wheel build runs under the Conda interpreter, the default env layout is target-specific instead of shared.
 
