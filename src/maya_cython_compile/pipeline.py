@@ -234,9 +234,11 @@ def build(
         "--prefix",
         str(config.local.env_path),
         "python",
-        "setup.py",
-        "bdist_wheel",
-        "--dist-dir",
+        "-m",
+        "build",
+        "--wheel",
+        "--no-isolation",
+        "--outdir",
         str(dist_dir),
     )
     if dry_run:

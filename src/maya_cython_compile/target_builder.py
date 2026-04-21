@@ -36,6 +36,7 @@ def prepare_build_tree(config: ResolvedConfig) -> Path:
         encoding="utf-8",
     )
     (build_root / "setup.py").write_text(render_setup_py(), encoding="utf-8")
+    (build_root / "pyproject.toml").write_text(render_pyproject_toml(), encoding="utf-8")
     return build_root
 
 
@@ -51,6 +52,17 @@ def render_artifact_metadata(config: ResolvedConfig) -> dict[str, str | int]:
         "module_name": config.build.module_name,
         "version": config.build.version,
     }
+
+
+def render_pyproject_toml() -> str:
+    return """[build-system]
+requires = [
+    "setuptools>=69",
+    "wheel",
+    "Cython>=3.0",
+]
+build-backend = "setuptools.build_meta"
+"""
 
 
 def render_setup_py() -> str:

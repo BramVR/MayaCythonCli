@@ -66,7 +66,7 @@ PowerShell wrappers under [../scripts](../scripts) are compatibility entrypoints
 
 Wheel builds do not run from the tracked source tree directly. The CLI prepares a disposable build root under `build/target-build/<target>/` through [../src/maya_cython_compile/target_builder.py](../src/maya_cython_compile/target_builder.py).
 
-That keeps packaging logic isolated while still generating target-specific build files. The generated wheel now carries target identity in `*.dist-info/maya_cython_compile_artifact.json` instead of shipping builder metadata inside the runtime package payload.
+That keeps packaging logic isolated while still generating target-specific build files. The target build tree now includes both a generated `pyproject.toml` and `setup.py`, then the pipeline invokes `python -m build --wheel --no-isolation` from the selected Conda env instead of shelling out to `setup.py` directly. The generated wheel still carries target identity in `*.dist-info/maya_cython_compile_artifact.json` instead of shipping builder metadata inside the runtime package payload.
 
 ## Target-scoped outputs
 

@@ -340,6 +340,7 @@ class PipelineTests(unittest.TestCase):
             maya_py=str(mayapy),
         )
         captured_env: dict[str, str] = {}
+        captured_command: list[str] = []
 
         def capture_run_command(
             command: list[str],
@@ -349,7 +350,8 @@ class PipelineTests(unittest.TestCase):
             verbose: bool = False,
             error_code: int,
         ) -> subprocess.CompletedProcess[str]:
-            del command, cwd, verbose, error_code
+            del cwd, verbose, error_code
+            captured_command.extend(command)
             if env is not None:
                 captured_env.update(env)
             write_fake_artifact_wheel(
@@ -392,6 +394,11 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(captured_env["MAYA_PYTHON_VERSION"], "3.11.9")
         self.assertEqual(captured_env["MAYA_PYTHON_EXT_SUFFIX"], ".so")
         self.assertEqual(captured_env["MAYA_PYTHON_SOABI"], "cpython-311")
+        self.assertIn("-m", captured_command)
+        self.assertIn("build", captured_command)
+        self.assertIn("--wheel", captured_command)
+        self.assertIn("--no-isolation", captured_command)
+        self.assertIn("--outdir", captured_command)
         self.assertEqual(manifest["wheel"], wheel_path.name)
         self.assertEqual(manifest["sha256"], hashlib.sha256(wheel_path.read_bytes()).hexdigest())
         self.assertEqual(manifest["build"]["target_name"], "linux-2024")
@@ -425,7 +432,7 @@ class PipelineTests(unittest.TestCase):
         self.assertIn(wheel_path.name, str(exc.exception))
         self.assertIn("sha256=", str(exc.exception))
 
-    def test_prepare_build_tree_writes_bdist_wheel_metadata_hook_without_runtime_file(self) -> None:
+    def test_prepare_build_tree_writes_pep517_metadata_hook_without_runtime_file(self) -> None:
         repo_root = make_temp_repo("pipeline-build-tree")
         write_multi_target_build_config(repo_root)
         package_root = repo_root / "src" / "maya_tool"
@@ -438,10 +445,13 @@ class PipelineTests(unittest.TestCase):
 
         build_config = json.loads((build_root / "build-config.json").read_text(encoding="utf-8"))
         setup_py = (build_root / "setup.py").read_text(encoding="utf-8")
+        pyproject_toml = (build_root / "pyproject.toml").read_text(encoding="utf-8")
         self.assertNotIn("artifact_metadata_filename", build_config)
         self.assertEqual(build_config["artifact_metadata"]["target_name"], "linux-2024")
         self.assertEqual(build_config["artifact_metadata"]["module_name"], "MayaToolLinux")
         self.assertFalse((build_root / "src" / "maya_tool" / ARTIFACT_METADATA_FILENAME).exists())
+        self.assertIn('build-backend = "setuptools.build_meta"', pyproject_toml)
+        self.assertIn('"Cython>=3.0"', pyproject_toml)
         self.assertIn('ARTIFACT_METADATA_FILE = "maya_cython_compile_artifact.json"', setup_py)
         self.assertIn('ARTIFACT_METADATA = dict(CONFIG["artifact_metadata"])', setup_py)
         self.assertIn('cmdclass={"build_py": build_py, "bdist_wheel": bdist_wheel}', setup_py)

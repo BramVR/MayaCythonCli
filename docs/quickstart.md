@@ -87,7 +87,8 @@ The build step:
 - rejects a selected target when its platform or Python version does not match the probed `mayapy` runtime
 - cleans prior target-scoped build artifacts when `--force` allows it
 - prepares `build/target-build/<target>/`
-- runs `setup.py bdist_wheel` inside the configured Conda env
+- writes a generated `pyproject.toml` plus `setup.py` into that target build tree
+- runs `python -m build --wheel --no-isolation` inside the configured Conda env
 - writes the wheel to `dist/<target>/`
 - writes `dist/<target>/artifact.json`, which records the exact wheel selected for that target plus its `sha256`
 
