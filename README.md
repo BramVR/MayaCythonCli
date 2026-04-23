@@ -30,6 +30,8 @@ maya-cython-compile --target windows-2025 verify --list-scenarios
 maya-cython-compile --target windows-2025 verify --scenario target-run --json --json-errors
 ```
 
+For a brand-new external repo, make sure that repo has its own `build-config.json` and `environment.yml` before you promote from `verify --scenario target-dry-run` to `verify --scenario target-run`. If the source tree is a flat Maya repo instead of one clean package, use `build_tree.source_mappings`, `rewrite_local_imports`, and `import_rewrites` to stage it into a packaged layout first.
+
 On Windows, the PowerShell wrappers under [`scripts/`](scripts/) stay thin delegates over the same target-based CLI. Use `.\scripts\run-pipeline.ps1 -Target windows-2025 -EnsureEnv -Force` when you want the full wrapper-driven flow without baking Maya version or platform defaults into the wrapper layer.
 
 Verification, from the selected target env created by `maya-cython-compile create-env`:
@@ -49,6 +51,8 @@ maya-cython-compile --target windows-2025 verify --scenario installed-cli-config
 ```
 
 Each verify run writes a repro bundle under `build/agent-runs/` with `summary.json`, per-step logs, copied inputs, and a filesystem snapshot an agent can inspect before patching and rerunning.
+
+`target-dry-run` is the safer first pass when the repo or workstation is new. It validates target resolution and previews the full command surface without creating the env. `target-run` is the loop-closing pass and requires the repo's tracked `environment.yml`.
 
 GitHub Actions keeps the hosted CI path small by running `ruff`, `mypy`, `unittest`, and the non-Maya `installed-cli-config-show` verify scenario on `windows-latest`.
 

@@ -64,6 +64,32 @@ maya-cython-compile --target windows-2025 doctor --json
 - whether the probed runtime platform matches the selected target
 - the resolved Python include path and Python library metadata, with fallback to standard Maya and Python runtime include and library layouts when `mayapy` leaves those paths blank or points at missing directories
 
+## Minimum tracked inputs per repo
+
+Every repo you build through this CLI needs these tracked inputs at its own repo root:
+
+- `build-config.json`
+- `environment.yml`
+
+And usually this untracked machine-local file:
+
+- `.maya-cython-compile.json`
+
+`doctor` and `verify --scenario target-dry-run` can still succeed before the env file exists, because they only validate config and preview commands. `create-env` and any flow that reaches it, including `verify --scenario target-run`, require `<repo-root>/environment.yml`.
+
+## Adopting an existing Maya repo
+
+For a fresh external repo:
+
+1. Add `build-config.json` with the target package name, compiled modules, smoke settings, and targets.
+2. Add `environment.yml` with the Conda and pip dependencies needed to build the wheel.
+3. Add `.maya-cython-compile.json` with machine-local `conda_exe`, `env_path`, and `maya_py` overrides when the defaults are not enough.
+4. Run `maya-cython-compile --target windows-2025 verify --scenario target-dry-run --json`.
+5. Fix config or path issues first.
+6. Promote to `maya-cython-compile --target windows-2025 verify --scenario target-run --json --json-errors`.
+
+If the external repo is not already one clean Python package under `package_dir`, stage it into one with `build_tree.source_mappings` and import rewrites before the wheel build starts.
+
 ## Create the build env
 
 ```powershell
@@ -103,6 +129,8 @@ maya-cython-compile --target windows-2025 smoke --force
 ```
 
 The smoke step resolves `dist/<target>/artifact.json`, verifies the referenced wheel hash, checks that the wheel's `.dist-info` target metadata matches the selected target, extracts it to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and validates the configured imports, callable, and resource check under `mayapy`. If the manifest is missing or the wheel metadata does not match, rebuild that target first.
+
+`mayapy` can still emit runtime warnings during a successful smoke run. Treat the step as passed when the command exits `0` and the configured smoke checks succeed; inspect the smoke logs if you need to distinguish a Maya warning from a packaging failure.
 
 ## Assemble the Maya module
 
@@ -157,3 +185,11 @@ Sharing one Conda env across multiple targets is only safe when those targets us
 Replace [../src/maya_tool](../src/maya_tool) with the package you want to ship, then update [../build-config.json](../build-config.json) so the pipeline compiles and assembles the correct target or set of targets.
 
 If the source repo is not already arranged as one package under `package_dir`, keep `package_dir` as the desired packaged destination and use `build_tree.source_mappings` plus optional import rewrites to stage loose modules, resource folders, or root scripts into the generated build tree before the wheel build starts.
+
+One common case is a flat Maya tool repo with loose modules under `src/`, resource files under `src/resources/`, and a root `run.py`. In that case:
+
+- set `package_dir` to the packaged destination you want, such as `src/curvenettool`
+- map the loose `src/` children into that package with `build_tree.source_mappings`
+- map root launch scripts such as `run.py` into the package if you want them shipped
+- enable `rewrite_local_imports` for sibling imports such as `import rig`
+- add `import_rewrites` entries for explicit prefixes such as `from src import ui`

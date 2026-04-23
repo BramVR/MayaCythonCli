@@ -14,6 +14,8 @@ read_when:
 
 The selected target can come from either layer.
 
+`environment.yml` is not part of either config layer, but it is still a required tracked input for any flow that needs `create-env`. Keep that file at `<repo-root>/environment.yml` in every repo that uses this pipeline.
+
 ## Target selection precedence
 
 1. CLI `--target`
@@ -187,10 +189,10 @@ Example for a repo with loose modules under `src/`, root-level `run.py`, and a d
   "package_name": "curvenettool",
   "package_dir": "src/curvenettool",
   "version": "0.1.0",
-  "compiled_modules": ["ui", "rig", "network"],
-  "package_data": ["resources/*"],
+  "compiled_modules": ["bifrost_deformer", "data", "maya_utils", "network", "rig", "ui"],
+  "package_data": ["resources/*", "run.py"],
   "smoke": {
-    "compiled_modules": ["ui", "rig", "network"],
+    "compiled_modules": ["bifrost_deformer", "data", "maya_utils", "network", "rig", "ui"],
     "resource_check": "resources/main_control.json"
   },
   "build_tree": {
@@ -212,6 +214,8 @@ Example for a repo with loose modules under `src/`, root-level `run.py`, and a d
   }
 }
 ```
+
+That pattern is meant for repos that are importable in Maya only because their source root is injected directly into `sys.path`. After staging, the generated package becomes importable as `curvenettool.*`, while sibling imports such as `import rig` and explicit legacy imports such as `from src import ui` are rewritten into package-relative imports inside the build tree.
 
 Current repo example:
 

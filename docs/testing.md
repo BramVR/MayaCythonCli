@@ -63,8 +63,16 @@ The default run bundle root is `build/agent-runs/`. Each run writes:
 
 Recommended loop:
 
-1. Run `verify --scenario target-run --json --json-errors`.
-2. If it fails, inspect `summary.json` and the failed step log.
-3. Patch the repo.
-4. Rerun the same verify scenario until it passes.
-5. Promote to `ruff`, `mypy`, and `unittest discover`.
+1. When the repo, machine config, or Maya toolchain state is still uncertain, start with `verify --scenario target-dry-run --json`.
+2. Confirm that `doctor` resolves the right target and that the previewed `create-env`, `build`, `smoke`, and `assemble` commands point at the expected repo paths.
+3. Promote to `verify --scenario target-run --json --json-errors`.
+4. If it fails, inspect `summary.json` and the failed step log.
+5. Patch the repo.
+6. Rerun the same verify scenario until it passes.
+7. Promote to `ruff`, `mypy`, and `unittest discover`.
+
+Notes:
+
+- `target-dry-run` does not prove that `<repo-root>/environment.yml` exists, because it only previews the `create-env` command.
+- `target-run` does require `<repo-root>/environment.yml` once it reaches `create-env`.
+- A successful smoke run can still contain non-fatal Maya warnings in `smoke_output`. Use the verify step exit code plus the smoke logs together when triaging.

@@ -1,5 +1,8 @@
 ---
 summary: "Docs index with short descriptions for the main Maya Cython compile topics."
+read_when:
+  - "When you want a quick doc map with one-line descriptions before reading deeper pages."
+  - "When updating docs navigation or checking whether a topic already has a page."
 ---
 
 # Docs
