@@ -59,6 +59,7 @@ It owns:
 - wheel build execution
 - smoke validation under `mayapy`
 - Maya module assembly
+- release zip packaging for end-user handoff
 
 PowerShell wrappers under [../scripts](../scripts) are compatibility entrypoints only. They stay Windows-only thin shims over the CLI surface, including the full `run` workflow, and they do not carry separate Maya version or platform defaults outside the selected target and resolved config.
 
@@ -87,6 +88,7 @@ The pipeline now namespaces mutable outputs by selected target so different Maya
 - artifact manifest: `dist/<target>/artifact.json`
 - smoke extraction: `build/smoke/<target>/wheel/`
 - assembled module payloads: `dist/module/<target>/<ModuleName>/`
+- release zips: `dist/release/<target>/`
 
 The manifest records the exact wheel name, its `sha256`, and the expected target metadata. `smoke` and `assemble` resolve through that manifest instead of scanning for the newest matching wheel name.
 
@@ -110,6 +112,12 @@ The wheel is the intermediate artifact. The final Maya module payload is assembl
 - `dist/module/<target>/<ModuleName>/contents/scripts/`
 - `dist/module/<target>/<ModuleName>/<ModuleName>.mod`
 
+That assembled module root is then packaged into the user-facing release artifact:
+
+- `dist/release/<target>/<ModuleName>-<version>-maya<MayaVersion>-<platform>.zip`
+
 Before extraction, assembly validates the manifest-selected wheel hash and confirms that its embedded target metadata still matches the selected target name, platform, Maya version, Python version, distribution, package, module, and version. That prevents wheels built for one Maya target from being silently consumed by another target when filenames happen to overlap.
 
 Assembly skips wheel metadata directories ending in `.dist-info` and `.data`. The `.mod` file is rendered from the resolved target metadata, so the module name, `MAYAVERSION:`, and `PLATFORM:` all come from the selected target instead of loose assembly-only flags. Because the module root is `dist/module/<target>/<ModuleName>/`, different platform or Maya-version targets do not clobber one another even when they reuse the same module name.
+
+Packaging preserves that assembled layout exactly, adds an `INSTALL.txt` file, and wraps the result under one top-level `<ModuleName>/` folder so the extracted tree can be copied directly into a Maya modules location.

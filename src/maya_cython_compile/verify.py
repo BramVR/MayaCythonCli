@@ -17,6 +17,8 @@ from .pipeline import (
     target_dist_dir,
     target_env_spec_path,
     target_module_root,
+    target_release_archive_path,
+    target_release_dir,
     target_smoke_extract_dir,
 )
 
@@ -207,6 +209,8 @@ def failure_hint(step_name: str, step_result: dict[str, Any]) -> str:
         return f"Check the extracted wheel and mayapy smoke logs in {stderr_log}."
     if step_name == "assemble":
         return f"Inspect the artifact manifest and assembled module paths. See {stderr_log}."
+    if step_name == "package":
+        return f"Inspect the assembled module root and release zip output. See {stderr_log}."
     if step_name == "package_cli":
         return f"Check wheel build output for the CLI package. See {stderr_log}."
     if step_name == "install_cli":
@@ -278,6 +282,8 @@ def write_tree_snapshot(config: ResolvedConfig, run_dir: Path) -> None:
         "env_spec": target_env_spec_path(config),
         "smoke_extract": target_smoke_extract_dir(config),
         "module_root": target_module_root(config),
+        "release_dir": target_release_dir(config),
+        "release_archive": target_release_archive_path(config),
     }
     lines: list[str] = []
     for label, path in tracked_paths.items():
@@ -306,6 +312,8 @@ def scenario_artifacts(config: ResolvedConfig, run_dir: Path) -> dict[str, str]:
         "environment_file": str(target_env_spec_path(config)),
         "smoke_extract_dir": str(target_smoke_extract_dir(config)),
         "module_root": str(target_module_root(config)),
+        "release_dir": str(target_release_dir(config)),
+        "release_archive": str(target_release_archive_path(config)),
     }
 
 
@@ -401,6 +409,7 @@ def build_target_run_steps(config: ResolvedConfig, run_dir: Path) -> list[Verify
             source_cli_step(config, "build", "build", "--force"),
             source_cli_step(config, "smoke", "smoke", "--force"),
             source_cli_step(config, "assemble", "assemble", "--force"),
+            source_cli_step(config, "package", "package", "--force"),
         ]
     )
     return steps
@@ -476,7 +485,7 @@ SCENARIOS: dict[str, VerifyScenario] = {
     ),
     "target-run": VerifyScenario(
         name="target-run",
-        description="Run doctor, build, smoke, and assemble against the selected target using the source CLI.",
+        description="Run doctor, build, smoke, assemble, and package against the selected target using the source CLI.",
         requires_maya=True,
         step_builder=build_target_run_steps,
     ),

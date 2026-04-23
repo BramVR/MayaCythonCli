@@ -23,6 +23,7 @@ from maya_cython_compile.pipeline import (
     build,
     conda_command,
     ensure_maya_build_runtime,
+    package,
     probe_maya_runtime,
     python_version_matches_target,
     render_target_environment_yaml,
@@ -656,6 +657,37 @@ class PipelineTests(unittest.TestCase):
         self.assertNotEqual(module_roots["windows-2025"], module_roots["macos-2026"])
         self.assertNotEqual(module_roots["linux-2024"], module_roots["macos-2026"])
 
+    def test_package_zips_assembled_module_root_for_distribution(self) -> None:
+        repo_root = make_temp_repo("pipeline-package")
+        write_multi_target_build_config(repo_root)
+        config = resolve_config(repo_root, target="windows-2025", maya_py=sys.executable)
+        module_root = repo_root / "dist" / "module" / "windows-2025" / "MayaToolWin"
+        package_root = module_root / "contents" / "scripts" / "maya_tool"
+        package_root.mkdir(parents=True, exist_ok=True)
+        (package_root / "__init__.py").write_text("from .bootstrap import show_ui\n", encoding="utf-8")
+        (package_root / "bootstrap.py").write_text("def show_ui():\n    return 'ok'\n", encoding="utf-8")
+        (package_root / "_cy_logic.cp311-win_amd64.pyd").write_text("", encoding="utf-8")
+        (module_root / "MayaToolWin.mod").write_text(
+            r"+ MAYAVERSION:2025 PLATFORM:win64 MayaToolWin 0.1.0 .\contents",
+            encoding="utf-8",
+        )
+
+        payload = package(config, force=True)
+
+        archive_path = repo_root / "dist" / "release" / "windows-2025" / "MayaToolWin-0.1.0-maya2025-windows.zip"
+        self.assertEqual(payload["archive"], str(archive_path))
+        self.assertEqual(payload["module_root"], str(module_root))
+        with zipfile.ZipFile(archive_path) as archive:
+            names = set(archive.namelist())
+            self.assertIn("MayaToolWin/INSTALL.txt", names)
+            self.assertIn("MayaToolWin/MayaToolWin.mod", names)
+            self.assertIn("MayaToolWin/contents/scripts/maya_tool/__init__.py", names)
+            self.assertIn("MayaToolWin/contents/scripts/maya_tool/_cy_logic.cp311-win_amd64.pyd", names)
+            install_text = archive.read("MayaToolWin/INSTALL.txt").decode("utf-8")
+        self.assertIn("Extract this zip", install_text)
+        self.assertIn("import maya_tool", install_text)
+        self.assertIn("maya_tool.show_ui()", install_text)
+
     def test_run_pipeline_executes_full_workflow_in_order_when_ensure_env_creates_missing_env(self) -> None:
         repo_root = make_temp_repo("pipeline-run-order")
         write_multi_target_build_config(repo_root)
@@ -687,6 +719,11 @@ class PipelineTests(unittest.TestCase):
             calls.append("assemble")
             return {"module_root": "module"}
 
+        def fake_package(*args: object, **kwargs: object) -> dict[str, str]:
+            del args, kwargs
+            calls.append("package")
+            return {"archive": "release.zip"}
+
         with (
             mock.patch(
                 "maya_cython_compile.pipeline.create_env",
@@ -704,11 +741,15 @@ class PipelineTests(unittest.TestCase):
                 "maya_cython_compile.pipeline.assemble",
                 side_effect=fake_assemble,
             ),
+            mock.patch(
+                "maya_cython_compile.pipeline.package",
+                side_effect=fake_package,
+            ),
         ):
             payload = run_pipeline(config, ensure_env=True, force=True)
 
-        self.assertEqual(calls, ["create_env", "build", "smoke", "assemble"])
-        self.assertEqual(list(payload), ["create_env", "build", "smoke", "assemble"])
+        self.assertEqual(calls, ["create_env", "build", "smoke", "assemble", "package"])
+        self.assertEqual(list(payload), ["create_env", "build", "smoke", "assemble", "package"])
 
     def test_render_target_environment_yaml_replaces_python_dependency(self) -> None:
         rendered = render_target_environment_yaml(

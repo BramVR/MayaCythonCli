@@ -160,6 +160,7 @@ class WrapperTests(unittest.TestCase):
             "-EnsureEnv",
             "-SkipSmoke",
             "-SkipAssemble",
+            "-SkipPackage",
             "-DryRun",
             "-Force",
         )
@@ -179,6 +180,7 @@ class WrapperTests(unittest.TestCase):
                 "--ensure-env",
                 "--skip-smoke",
                 "--skip-assemble",
+                "--skip-package",
                 "--dry-run",
                 "--force",
             ],

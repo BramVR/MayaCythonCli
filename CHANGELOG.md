@@ -5,6 +5,7 @@
 ### Features
 
 - Verification: add the `verify` command with agent-facing `target-dry-run`, `target-run`, and `installed-cli-config-show` scenarios plus per-run repro bundles under `build/agent-runs/`.
+- Pipeline: add a `package` command and make `run` produce a user-facing Maya module release zip under `dist/release/<target>/`.
 
 ### Fixes
 
@@ -26,6 +27,7 @@
 - Docs: move the main manual into `docs/`, add operator notes for local runs, document the version flag, clarify supported output modes, replace the old CLI reference with an implementation-oriented spec, and tighten the wrapper safety/config ownership guidance.
 - Docs: document the `verify` workflow, the structured error contract, and the recommended agent repair loop in the CLI and testing guides.
 - Docs: clarify external-repo onboarding by making `environment.yml` an explicit per-repo requirement, documenting the safer `target-dry-run` to `target-run` promotion path, and expanding the flat Maya repo staging example.
+- Docs: document the new release zip handoff and end-user Maya installation workflow.
 - Distribution: bundle a repo-local `skills/maya-cython-compile/` agent skill and document manual installation from the repo without enabling global agent routing by default.
 
 ### Build

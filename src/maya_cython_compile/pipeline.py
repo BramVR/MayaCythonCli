@@ -19,6 +19,7 @@ from .errors import (
     BUILD_ERROR,
     DEPENDENCY_ERROR,
     INTERRUPTED_ERROR,
+    PACKAGE_ERROR,
     SMOKE_ERROR,
     USAGE_ERROR,
     CliError,
@@ -131,6 +132,7 @@ payload = {
 print(json.dumps(payload))
 """.strip()
 ARTIFACT_MANIFEST_FILENAME = "artifact.json"
+RELEASE_INSTALL_FILENAME = "INSTALL.txt"
 
 
 def show_config(config: ResolvedConfig) -> dict[str, Any]:
@@ -385,6 +387,62 @@ def assemble(
     }
 
 
+def package(
+    config: ResolvedConfig,
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    require_module: bool = True,
+) -> dict[str, Any]:
+    module_root = target_module_root(config)
+    archive_path = target_release_archive_path(config)
+    release_dir = target_release_dir(config)
+    deletion_targets = plan_package_cleanup(release_dir)
+    details = {
+        "target": config.build.target_name,
+        "module_root": str(module_root) if module_root.exists() or require_module else "after assemble step",
+        "release_dir": str(release_dir),
+        "archive": str(archive_path),
+        "artifact_manifest": str(target_artifact_manifest_path(config)),
+    }
+    if dry_run:
+        return render_dry_run("package", deletion_targets, details=details)
+
+    require_confirmation(
+        "package",
+        deletion_targets,
+        force=force,
+    )
+    delete_paths(deletion_targets)
+    release_dir.mkdir(parents=True, exist_ok=True)
+
+    if not module_root.exists():
+        if require_module:
+            raise CliError(
+                (
+                    f"No assembled Maya module found at {module_root}. "
+                    f"Run assemble again for target {config.build.target_name}."
+                ),
+                PACKAGE_ERROR,
+            )
+        raise CliError("No assembled Maya module found for package step.", PACKAGE_ERROR)
+
+    install_text = render_release_install_text(config)
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(f"{config.build.module_name}/{RELEASE_INSTALL_FILENAME}", install_text)
+        for path in sorted(module_root.rglob("*")):
+            if path.is_dir():
+                continue
+            archive.write(path, arcname=(Path(config.build.module_name) / path.relative_to(module_root)).as_posix())
+
+    return {
+        "artifact_manifest": str(target_artifact_manifest_path(config)),
+        "module_root": str(module_root),
+        "release_dir": str(release_dir),
+        "archive": str(archive_path),
+    }
+
+
 def run_pipeline(
     config: ResolvedConfig,
     *,
@@ -392,6 +450,7 @@ def run_pipeline(
     ensure_env: bool = False,
     skip_smoke: bool = False,
     skip_assemble: bool = False,
+    skip_package: bool = False,
     dry_run: bool = False,
     force: bool = False,
 ) -> dict[str, Any]:
@@ -427,12 +486,20 @@ def run_pipeline(
                 force=force,
                 require_wheel=False,
             )
+        if not skip_package:
+            steps["package"] = package(
+                config,
+                dry_run=True,
+                force=force,
+                require_module=skip_assemble,
+            )
         return {"dry_run": True, "steps": steps}
 
     pipeline_deletions = plan_pipeline_cleanup(
         config,
         skip_smoke=skip_smoke,
         skip_assemble=skip_assemble,
+        skip_package=skip_package,
     )
     require_confirmation(
         "run",
@@ -461,6 +528,12 @@ def run_pipeline(
         steps["assemble"] = assemble(
             config,
             force=True,
+        )
+    if not skip_package:
+        steps["package"] = package(
+            config,
+            force=True,
+            require_module=not skip_assemble,
         )
     return steps
 
@@ -834,17 +907,26 @@ def plan_assemble_cleanup(module_root: Path) -> list[DeletionTarget]:
     return [DeletionTarget(module_root, "replace previous assembled module output")]
 
 
+def plan_package_cleanup(release_dir: Path) -> list[DeletionTarget]:
+    if not release_dir.exists():
+        return []
+    return [DeletionTarget(release_dir, "replace previous release package output")]
+
+
 def plan_pipeline_cleanup(
     config: ResolvedConfig,
     *,
     skip_smoke: bool,
     skip_assemble: bool,
+    skip_package: bool,
 ) -> list[DeletionTarget]:
     deletion_targets = plan_build_cleanup(config)
     if not skip_smoke:
         deletion_targets.extend(plan_smoke_cleanup(target_smoke_extract_dir(config)))
     if not skip_assemble:
         deletion_targets.extend(plan_assemble_cleanup(target_module_root(config)))
+    if not skip_package:
+        deletion_targets.extend(plan_package_cleanup(target_release_dir(config)))
     return deletion_targets
 
 
@@ -872,11 +954,44 @@ def target_module_root(config: ResolvedConfig) -> Path:
     return config.repo_root / "dist" / "module" / config.build.target_name / config.build.module_name
 
 
+def target_release_dir(config: ResolvedConfig) -> Path:
+    return config.repo_root / "dist" / "release" / config.build.target_name
+
+
+def release_archive_basename(config: ResolvedConfig) -> str:
+    return (
+        f"{config.build.module_name}-{config.build.version}-"
+        f"maya{config.build.maya_version}-{config.build.platform}"
+    )
+
+
+def target_release_archive_path(config: ResolvedConfig) -> Path:
+    return target_release_dir(config) / f"{release_archive_basename(config)}.zip"
+
+
 def render_module_definition(config: ResolvedConfig) -> str:
     return (
         f"+ MAYAVERSION:{config.build.maya_version} "
         f"PLATFORM:{module_platform_token(config.build.platform)} "
         f"{config.build.module_name} {config.build.version} {module_contents_root(config.build.platform)}"
+    )
+
+
+def render_release_install_text(config: ResolvedConfig) -> str:
+    return (
+        f"{config.build.module_name} {config.build.version}\n"
+        f"Target: {config.build.target_name}\n"
+        f"Maya: {config.build.maya_version}\n"
+        f"Platform: {config.build.platform}\n"
+        "\n"
+        "Install:\n"
+        "1. Extract this zip to a folder that Maya scans through MAYA_MODULE_PATH.\n"
+        f"2. Keep the top-level folder named {config.build.module_name} intact.\n"
+        "3. Start Maya.\n"
+        "\n"
+        "Python usage:\n"
+        f"import {config.build.package_name}\n"
+        f"{config.build.package_name}.show_ui()\n"
     )
 
 

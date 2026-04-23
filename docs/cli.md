@@ -30,7 +30,8 @@ maya-cython-compile
     | build [--dry-run] [--force]
     | smoke [--dry-run] [--force]
     | assemble [--dry-run] [--force]
-    | run [--dry-run] [--force] [--ensure-env] [--skip-smoke] [--skip-assemble]
+    | package [--dry-run] [--force]
+    | run [--dry-run] [--force] [--ensure-env] [--skip-smoke] [--skip-assemble] [--skip-package]
     | verify [--scenario NAME] [--list-scenarios] [--run-root PATH]
   )
 ```
@@ -86,6 +87,16 @@ Reads `dist/<target>/artifact.json`, validates that the referenced wheel's embed
 
 Reads `dist/<target>/artifact.json`, validates the referenced wheel against the selected target, extracts package files into `dist/module/<target>/<ModuleName>/contents/scripts/`, skips wheel metadata directories, and writes `<ModuleName>.mod`. The module name, `MAYAVERSION:`, and `PLATFORM:` tokens in that file all come from the selected target's resolved metadata, not from extra assembly-only flags.
 
+### `package`
+
+Reads the assembled module root from `dist/module/<target>/<ModuleName>/` and writes a user-facing release zip to `dist/release/<target>/`.
+
+The archive name is derived from target metadata:
+
+- `<ModuleName>-<version>-maya<MayaVersion>-<platform>.zip`
+
+The zip keeps the assembled Maya module layout intact under one top-level `<ModuleName>/` folder and adds an `INSTALL.txt` file with the Maya installation and Python entrypoint steps.
+
 ### `run`
 
 Runs the full pipeline in order:
@@ -94,8 +105,9 @@ Runs the full pipeline in order:
 2. `build`
 3. `smoke` unless `--skip-smoke`
 4. `assemble` unless `--skip-assemble`
+5. `package` unless `--skip-package`
 
-`run --dry-run --ensure-env` now previews the same target-scoped step list even when the selected env does not exist yet. The dry run includes `create_env`, then renders the downstream `build`, `smoke`, and `assemble` plans as if that target env will be created by the real run.
+`run --dry-run --ensure-env` now previews the same target-scoped step list even when the selected env does not exist yet. The dry run includes `create_env`, then renders the downstream `build`, `smoke`, `assemble`, and `package` plans as if that target env will be created by the real run.
 
 ### `verify`
 
@@ -103,7 +115,7 @@ Runs agent-facing verification scenarios and writes a durable repro bundle under
 
 Current built-in scenarios:
 
-- `target-run` - runs `doctor`, then `create-env` when the selected env is missing, then `build`, `smoke`, and `assemble`
+- `target-run` - runs `doctor`, then `create-env` when the selected env is missing, then `build`, `smoke`, `assemble`, and `package`
 - `target-dry-run` - runs `doctor`, then `run --dry-run --ensure-env`
 - `installed-cli-config-show` - builds the CLI wheel, installs it into a fresh virtualenv, and runs `config show` through the installed entrypoint
 
@@ -138,8 +150,9 @@ Dry-run behavior:
 - `run --dry-run --ensure-env` can preview the full workflow before the selected target env exists
 - target-aware dry-run payloads include the resolved `target`
 - `assemble --dry-run` also reports the selected target's `target_platform` and `target_maya_version`
+- `package --dry-run` reports the assembled module root and derived release zip path
 - `create-env --dry-run` also reports the resolved `python_version` and generated environment file path
-- build, smoke, and assemble dry runs also report the target artifact manifest path
+- build, smoke, assemble, and package dry runs also report the target artifact manifest path
 
 Doctor behavior:
 
@@ -155,6 +168,7 @@ These commands share the same cleanup rules:
 - `build`
 - `smoke`
 - `assemble`
+- `package`
 - `run`
 
 Rules:
@@ -174,6 +188,7 @@ Rules:
 | `4` | build failure |
 | `5` | smoke failure |
 | `6` | assemble failure |
+| `7` | package failure |
 | `130` | interrupted by Ctrl-C |
 
 ## Examples
@@ -186,6 +201,7 @@ maya-cython-compile --target windows-2025 create-env --dry-run
 maya-cython-compile --target windows-2025 build --force --verbose
 maya-cython-compile --target windows-2025 smoke --force
 maya-cython-compile --target windows-2025 assemble --force
+maya-cython-compile --target windows-2025 package --force
 maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 maya-cython-compile --target windows-2025 run --ensure-env --force
 maya-cython-compile --target windows-2025 verify --list-scenarios

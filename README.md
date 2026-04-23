@@ -24,6 +24,7 @@ maya-cython-compile --target windows-2025 build --dry-run
 maya-cython-compile --target windows-2025 build --force
 maya-cython-compile --target windows-2025 smoke --force
 maya-cython-compile --target windows-2025 assemble --force
+maya-cython-compile --target windows-2025 package --force
 maya-cython-compile --target windows-2025 run --dry-run --ensure-env
 maya-cython-compile --target windows-2025 run --ensure-env --force
 maya-cython-compile --target windows-2025 verify --list-scenarios
@@ -33,6 +34,8 @@ maya-cython-compile --target windows-2025 verify --scenario target-run --json --
 For a brand-new external repo, make sure that repo has its own `build-config.json` and `environment.yml` before you promote from `verify --scenario target-dry-run` to `verify --scenario target-run`. If the source tree is a flat Maya repo instead of one clean package, use `build_tree.source_mappings`, `rewrite_local_imports`, and `import_rewrites` to stage it into a packaged layout first.
 
 On Windows, the PowerShell wrappers under [`scripts/`](scripts/) stay thin delegates over the same target-based CLI. Use `.\scripts\run-pipeline.ps1 -Target windows-2025 -EnsureEnv -Force` when you want the full wrapper-driven flow without baking Maya version or platform defaults into the wrapper layer.
+
+The wheel under `dist/<target>/` is the pipeline's intermediate artifact. The end-user handoff artifact is the release zip under `dist/release/<target>/`, produced by `maya-cython-compile --target <name> package --force` or by the default `run` workflow.
 
 Verification, from the selected target env created by `maya-cython-compile create-env`:
 

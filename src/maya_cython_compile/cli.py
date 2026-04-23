@@ -11,7 +11,7 @@ from typing import Any
 
 from .config import ResolvedConfig, resolve_config
 from .errors import INTERRUPTED_ERROR, USAGE_ERROR, CliError
-from .pipeline import assemble, build, create_env, doctor, run_pipeline, show_config, smoke
+from .pipeline import assemble, build, create_env, doctor, package, run_pipeline, show_config, smoke
 from .verify import list_scenarios, run_verification
 
 BOOL_GLOBAL_FLAGS = {"--json", "--json-errors", "--verbose", "--version"}
@@ -71,6 +71,12 @@ def build_parser() -> argparse.ArgumentParser:
     assemble_parser = subparsers.add_parser("assemble", help="Assemble the Maya module layout.")
     add_safety_flags(assemble_parser)
 
+    package_parser = subparsers.add_parser(
+        "package",
+        help="Zip the assembled Maya module into a user-facing release artifact.",
+    )
+    add_safety_flags(package_parser)
+
     run_parser = subparsers.add_parser("run", help="Run the full pipeline.")
     add_safety_flags(run_parser)
     run_parser.add_argument(
@@ -80,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("--skip-smoke", action="store_true", help="Skip mayapy smoke validation.")
     run_parser.add_argument("--skip-assemble", action="store_true", help="Skip module assembly.")
+    run_parser.add_argument("--skip-package", action="store_true", help="Skip release zip packaging.")
 
     verify_parser = subparsers.add_parser("verify", help="Run agent-facing verification scenarios.")
     verify_parser.add_argument(
@@ -204,6 +211,12 @@ def dispatch(args: argparse.Namespace, config: ResolvedConfig) -> dict[str, Any]
             dry_run=bool(args.dry_run),
             force=bool(args.force),
         )
+    if args.command == "package":
+        return package(
+            config,
+            dry_run=bool(args.dry_run),
+            force=bool(args.force),
+        )
     if args.command == "run":
         return run_pipeline(
             config,
@@ -211,6 +224,7 @@ def dispatch(args: argparse.Namespace, config: ResolvedConfig) -> dict[str, Any]
             ensure_env=bool(args.ensure_env),
             skip_smoke=bool(args.skip_smoke),
             skip_assemble=bool(args.skip_assemble),
+            skip_package=bool(args.skip_package),
             dry_run=bool(args.dry_run),
             force=bool(args.force),
         )

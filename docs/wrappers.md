@@ -27,7 +27,7 @@ Each wrapper:
 - sets `PYTHONPATH` to `<repoRoot>/src`
 - forwards `-Target` to CLI `--target` when provided
 - forwards `-EnvPath` and `-MayaPy` only when that wrapper exposes them and you pass them explicitly
-- forwards the full `run` workflow flags from `run-pipeline.ps1` as `-EnsureEnv`, `-SkipSmoke`, and `-SkipAssemble`
+- forwards the full `run` workflow flags from `run-pipeline.ps1` as `-EnsureEnv`, `-SkipSmoke`, `-SkipAssemble`, and `-SkipPackage`
 - forwards the matching safety flags as `-DryRun` and `-Force`
 - dispatches into `python -m maya_cython_compile ...`
 

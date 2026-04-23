@@ -64,7 +64,7 @@ The default run bundle root is `build/agent-runs/`. Each run writes:
 Recommended loop:
 
 1. When the repo, machine config, or Maya toolchain state is still uncertain, start with `verify --scenario target-dry-run --json`.
-2. Confirm that `doctor` resolves the right target and that the previewed `create-env`, `build`, `smoke`, and `assemble` commands point at the expected repo paths.
+2. Confirm that `doctor` resolves the right target and that the previewed `create-env`, `build`, `smoke`, `assemble`, and `package` commands point at the expected repo paths.
 3. Promote to `verify --scenario target-run --json --json-errors`.
 4. If it fails, inspect `summary.json` and the failed step log.
 5. Patch the repo.

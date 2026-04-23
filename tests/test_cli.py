@@ -164,12 +164,14 @@ class CliTests(unittest.TestCase):
                 "run",
                 "--ensure-env",
                 "--skip-smoke",
+                "--skip-package",
             ]
         )
 
         self.assertEqual(args.command, "run")
         self.assertTrue(args.ensure_env)
         self.assertTrue(args.skip_smoke)
+        self.assertTrue(args.skip_package)
         self.assertEqual(args.target, "linux-2024")
         self.assertEqual(args.maya_py, "C:/Maya/bin/mayapy.exe")
 
@@ -339,12 +341,47 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["dry_run"])
         self.assertEqual(
             list(payload["steps"]),
-            ["create_env", "build", "smoke", "assemble"],
+            ["create_env", "build", "smoke", "assemble", "package"],
         )
         self.assertEqual(payload["steps"]["create_env"]["target"], "linux-2024")
         self.assertEqual(payload["steps"]["build"]["target"], "linux-2024")
         self.assertEqual(payload["steps"]["smoke"]["wheel"], "after build step")
         self.assertEqual(payload["steps"]["assemble"]["wheel"], "after build step")
+        self.assertEqual(payload["steps"]["package"]["module_root"], "after assemble step")
+
+    def test_main_package_json_with_existing_module_root(self) -> None:
+        repo_root = make_temp_repo("cli-package")
+        write_multi_target_build_config(repo_root)
+        module_root = repo_root / "dist" / "module" / "linux-2024" / "MayaToolLinux"
+        package_root = module_root / "contents" / "scripts" / "maya_tool"
+        package_root.mkdir(parents=True, exist_ok=True)
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+        (package_root / "bootstrap.py").write_text("def show_ui():\n    return 'ok'\n", encoding="utf-8")
+        (module_root / "MayaToolLinux.mod").write_text(
+            "+ MAYAVERSION:2024 PLATFORM:linux MayaToolLinux 0.1.0 ./contents",
+            encoding="utf-8",
+        )
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            exit_code = main(
+                [
+                    "--repo-root",
+                    str(repo_root),
+                    "--target",
+                    "linux-2024",
+                    "package",
+                    "--json",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(
+            Path(payload["archive"]).name,
+            "MayaToolLinux-0.1.0-maya2024-linux.zip",
+        )
+        self.assertEqual(Path(payload["module_root"]), module_root)
 
     def test_main_build_dry_run_json_lists_cleanup_targets(self) -> None:
         repo_root = make_temp_repo("cli-build-dry-run")

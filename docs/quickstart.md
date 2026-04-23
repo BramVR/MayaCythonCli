@@ -8,6 +8,7 @@ read_when:
 # Quickstart
 
 Build a Maya-targeted Cython wheel from a normal Python environment, validate it under `mayapy`, then assemble a Maya module layout from the built wheel.
+Package the assembled Maya module root into a release zip when you need something end users can install directly.
 
 ## Current scaffold
 
@@ -147,6 +148,25 @@ Expected outputs:
 
 The assembled `.mod` file now derives its module name, `MAYAVERSION:`, and `PLATFORM:` from the selected target. If you reuse one module name across multiple Maya versions or operating systems, the target-scoped `dist/module/<target>/...` layout keeps those assembled outputs separate.
 
+## Package a release zip
+
+```powershell
+maya-cython-compile --target windows-2025 package --dry-run
+maya-cython-compile --target windows-2025 package --force
+```
+
+Expected outputs:
+
+- `dist/release/<target>/<ModuleName>-<version>-maya<MayaVersion>-<platform>.zip`
+
+The release zip is the artifact you should hand to end users. It contains one top-level `<ModuleName>/` folder with:
+
+- `<ModuleName>.mod`
+- `contents/`
+- `INSTALL.txt`
+
+The wheel under `dist/<target>/` is still the pipeline's intermediate build artifact. End users normally should not install that wheel directly.
+
 ## Run the full flow
 
 ```powershell
@@ -160,6 +180,7 @@ Useful variants:
 ```powershell
 maya-cython-compile --target windows-2025 run --skip-smoke
 maya-cython-compile --target windows-2025 run --skip-assemble
+maya-cython-compile --target windows-2025 run --skip-package
 maya-cython-compile --target windows-2025 run --force
 ```
 
@@ -171,6 +192,15 @@ Windows wrapper equivalents:
 ```
 
 Sharing one Conda env across multiple targets is only safe when those targets use the same Python ABI and compatible build dependencies. The default `.conda/<target>` layout avoids cross-target wheel and interpreter drift.
+
+## End-user install
+
+For the normal Maya user workflow:
+
+1. Give the user the release zip from `dist/release/<target>/`.
+2. They extract it into a folder already covered by `MAYA_MODULE_PATH`, or into a shared studio modules location.
+3. They start Maya.
+4. They run the package entrypoint from Maya Python, for example `import maya_tool; maya_tool.show_ui()`.
 
 ## Non-interactive contract
 

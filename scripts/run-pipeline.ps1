@@ -5,6 +5,7 @@ param(
     [switch]$EnsureEnv,
     [switch]$SkipSmoke,
     [switch]$SkipAssemble,
+    [switch]$SkipPackage,
     [switch]$DryRun,
     [switch]$Force
 )
@@ -22,6 +23,7 @@ $cliArgs = @(
     if ($EnsureEnv) { "--ensure-env" }
     if ($SkipSmoke) { "--skip-smoke" }
     if ($SkipAssemble) { "--skip-assemble" }
+    if ($SkipPackage) { "--skip-package" }
     if ($DryRun) { "--dry-run" }
     if ($Force) { "--force" }
 )
