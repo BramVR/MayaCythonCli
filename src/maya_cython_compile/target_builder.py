@@ -300,7 +300,10 @@ class PackageImportTransformer(ast.NodeTransformer):
             if regular_aliases:
                 statements.append(ast.Import(names=regular_aliases))
                 regular_aliases = []
-            statements.append(rewritten)
+            if isinstance(rewritten, list):
+                statements.extend(rewritten)
+            else:
+                statements.append(rewritten)
         if regular_aliases:
             statements.append(ast.Import(names=regular_aliases))
         if not statements:
@@ -319,13 +322,15 @@ class PackageImportTransformer(ast.NodeTransformer):
         module = ".".join(replacement) if replacement else None
         return ast.ImportFrom(module=module, names=node.names, level=1)
 
-    def rewrite_import_alias(self, alias: ast.alias) -> ast.stmt | None:
+    def rewrite_import_alias(self, alias: ast.alias) -> ast.stmt | list[ast.stmt] | None:
         replacement = self.rewrite_module_path(alias.name)
         if replacement is None:
             return None
         if not replacement:
             return None
 
+        if alias.asname is None and len(replacement) > 1:
+            return self.rewrite_import_chain(replacement)
         if len(replacement) == 1:
             return ast.ImportFrom(module=None, names=[ast.alias(name=replacement[0], asname=alias.asname)], level=1)
         return ast.ImportFrom(
@@ -333,6 +338,20 @@ class PackageImportTransformer(ast.NodeTransformer):
             names=[ast.alias(name=replacement[-1], asname=alias.asname)],
             level=1,
         )
+
+    def rewrite_import_chain(self, replacement: list[str]) -> list[ast.stmt]:
+        statements: list[ast.stmt] = [
+            ast.ImportFrom(module=None, names=[ast.alias(name=replacement[0], asname=None)], level=1)
+        ]
+        for index in range(1, len(replacement)):
+            statements.append(
+                ast.ImportFrom(
+                    module=".".join(replacement[:index]),
+                    names=[ast.alias(name=replacement[index], asname=None)],
+                    level=1,
+                )
+            )
+        return statements
 
     def rewrite_module_path(self, module_name: str) -> list[str] | None:
         parts = module_name.split(".")

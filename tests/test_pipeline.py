@@ -29,7 +29,11 @@ from maya_cython_compile.pipeline import (
     run_pipeline,
     smoke,
 )
-from maya_cython_compile.target_builder import ARTIFACT_METADATA_FILENAME, prepare_build_tree
+from maya_cython_compile.target_builder import (
+    ARTIFACT_METADATA_FILENAME,
+    prepare_build_tree,
+    rewrite_python_imports,
+)
 from probe_fixtures import make_probe_completed_process, make_temp_repo, write_fake_maya_probe_layout
 
 
@@ -530,6 +534,21 @@ class PipelineTests(unittest.TestCase):
             "from . import ui\n",
         )
         self.assertTrue((staged_package / "resources" / "main_control.json").exists())
+
+    def test_rewrite_python_imports_preserves_dotted_import_bindings(self) -> None:
+        rewritten = rewrite_python_imports(
+            "import rig.utils\nprint(rig.utils.VALUE)\n",
+            current_path=Path("pkg/ui.py"),
+            package_target=Path("pkg"),
+            local_modules={"rig"},
+            rewrite_local_imports=True,
+            import_rewrites={},
+        )
+
+        self.assertEqual(
+            rewritten,
+            "from . import rig\nfrom .rig import utils\nprint(rig.utils.VALUE)\n",
+        )
 
     def test_smoke_rejects_wheel_from_other_target_even_in_selected_dist_dir(self) -> None:
         repo_root = make_temp_repo("pipeline-smoke-wrong-target")

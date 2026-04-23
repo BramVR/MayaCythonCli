@@ -14,6 +14,7 @@
 - Assembly: make assembled Maya module outputs target-owned so different target builds do not clobber one another.
 - Config: resolve the default Conda path from `%USERPROFILE%` instead of a user-specific absolute path.
 - Build flow: allow build-tree staging of non-package repo layouts through configurable source mappings and optional import rewrites before wheel creation.
+- Build flow: preserve dotted import bindings when local package imports are rewritten in staged build trees.
 - Build flow: keep generated extension source paths repo-relative so Windows target builds do not fail on duplicated absolute temp-path expansion.
 - Runtime probe: fall back to standard Maya and Python include and import-library layouts when `mayapy` leaves header or library paths blank or invalid.
 
