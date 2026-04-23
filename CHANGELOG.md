@@ -18,6 +18,7 @@
 
 - Docs: move the main manual into `docs/`, add operator notes for local runs, document the version flag, clarify supported output modes, replace the old CLI reference with an implementation-oriented spec, and tighten the wrapper safety/config ownership guidance.
 - Docs: document the `verify` workflow, the structured error contract, and the recommended agent repair loop in the CLI and testing guides.
+- Distribution: bundle a repo-local `skills/maya-cython-compile/` agent skill and document manual installation from the repo without enabling global agent routing by default.
 
 ### Build
 

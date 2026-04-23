@@ -10,6 +10,8 @@ Docs live in [`docs/`](docs/). Start with:
 - [docs/config.md](docs/config.md)
 - [docs/architecture.md](docs/architecture.md)
 
+This repo also ships a bundled agent skill at [`skills/maya-cython-compile/`](skills/maya-cython-compile) for Codex-style clients. The repo copy is the canonical source; it is not auto-activated just by cloning or installing this project.
+
 Short version:
 
 ```powershell
@@ -59,3 +61,17 @@ Core files:
 - [src/maya_cython_compile](src/maya_cython_compile)
 - [src/maya_tool](src/maya_tool)
 - [scripts](scripts)
+
+## Agent Skill
+
+Manual install for Codex-style clients on Windows:
+
+```powershell
+$skillsDir = Join-Path $HOME ".codex\skills"
+$targetDir = Join-Path $skillsDir "maya-cython-compile"
+New-Item -ItemType Directory -Force -Path $skillsDir | Out-Null
+Remove-Item -Recurse -Force $targetDir -ErrorAction SilentlyContinue
+Copy-Item -Recurse -Force .\skills\maya-cython-compile $targetDir
+```
+
+That only installs the skill bundle. Automatic discovery remains opt-in through the user's global agent instructions.
