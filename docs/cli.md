@@ -61,7 +61,7 @@ Flags that are not implemented:
 
 ### `config show`
 
-Prints the fully resolved config from tracked build metadata, local config, environment variables, and CLI overrides. The payload includes the selected `target`, `available_targets`, the resolved target `platform`, and the target `python_version` used for Conda env creation.
+Prints the fully resolved config from tracked build metadata, local config, environment variables, and CLI overrides. The payload includes the selected `target`, `available_targets`, the resolved target `platform`, the target `python_version` used for Conda env creation, and any resolved `build_tree` staging settings.
 
 ### `doctor`
 
@@ -73,7 +73,7 @@ Creates the selected target's Conda build environment from [../environment.yml](
 
 ### `build`
 
-Builds the selected target's wheel inside the resolved Conda env. It validates the `mayapy` probe, rejects a target platform or Python-version mismatch, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, generates a target-local `pyproject.toml` and `setup.py`, invokes `python -m build --wheel --no-isolation`, stamps target metadata into the wheel's `.dist-info` directory, and writes:
+Builds the selected target's wheel inside the resolved Conda env. It validates the `mayapy` probe, rejects a target platform or Python-version mismatch, cleans prior build outputs when allowed, prepares `build/target-build/<target>/`, stages the configured package layout into that tree, generates a target-local `pyproject.toml` and `setup.py`, invokes `python -m build --wheel --no-isolation`, stamps target metadata into the wheel's `.dist-info` directory, and writes:
 
 - the wheel to `dist/<target>/`
 - the resolved artifact manifest to `dist/<target>/artifact.json`, including the selected wheel name and `sha256`

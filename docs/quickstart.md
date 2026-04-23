@@ -87,6 +87,9 @@ The build step:
 - rejects a selected target when its platform or Python version does not match the probed `mayapy` runtime
 - cleans prior target-scoped build artifacts when `--force` allows it
 - prepares `build/target-build/<target>/`
+- stages the package contents into that build tree, either by copying `package_dir` directly or by applying optional `build_tree.source_mappings` first
+- can rewrite package-local imports inside the staged tree when `build_tree.rewrite_local_imports` or `build_tree.import_rewrites` is configured
+- uses repo-relative extension source paths inside the generated build tree so Windows wheel builds do not trip over duplicated absolute temp paths
 - writes a generated `pyproject.toml` plus `setup.py` into that target build tree
 - runs `python -m build --wheel --no-isolation` inside the configured Conda env
 - writes the wheel to `dist/<target>/`
@@ -152,3 +155,5 @@ Sharing one Conda env across multiple targets is only safe when those targets us
 ## For a real tool
 
 Replace [../src/maya_tool](../src/maya_tool) with the package you want to ship, then update [../build-config.json](../build-config.json) so the pipeline compiles and assembles the correct target or set of targets.
+
+If the source repo is not already arranged as one package under `package_dir`, keep `package_dir` as the desired packaged destination and use `build_tree.source_mappings` plus optional import rewrites to stage loose modules, resource folders, or root scripts into the generated build tree before the wheel build starts.

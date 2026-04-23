@@ -68,6 +68,15 @@ Wheel builds do not run from the tracked source tree directly. The CLI prepares 
 
 That keeps packaging logic isolated while still generating target-specific build files. The target build tree now includes both a generated `pyproject.toml` and `setup.py`, then the pipeline invokes `python -m build --wheel --no-isolation` from the selected Conda env instead of shelling out to `setup.py` directly. The generated wheel still carries target identity in `*.dist-info/maya_cython_compile_artifact.json` instead of shipping builder metadata inside the runtime package payload.
 
+The build tree can now stage non-package repo layouts before the wheel build starts:
+
+- default mode copies `package_dir` directly into the generated tree
+- `build_tree.source_mappings` can copy arbitrary repo files or directories into target paths under the generated tree
+- `build_tree.rewrite_local_imports` can rewrite sibling imports like `import rig` into package-relative imports inside the staged package
+- `build_tree.import_rewrites` can remap explicit prefixes such as `from src import ui` into package-relative imports
+
+The generated `setup.py` now discovers the target package and any nested subpackages under the staged package parent instead of assuming there is exactly one tracked package directory with no subpackages. Its generated extension source paths and Cython build directory are kept repo-relative instead of absolute so Windows build temp paths do not expand into duplicated absolute-path fragments.
+
 ## Target-scoped outputs
 
 The pipeline now namespaces mutable outputs by selected target so different Maya and platform builds do not clobber one another:

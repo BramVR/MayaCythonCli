@@ -229,3 +229,31 @@ class ConfigTests(unittest.TestCase):
         config = resolve_config(repo_root)
 
         self.assertEqual(config.build.python_version, DEFAULT_PYTHON_VERSION)
+
+    def test_resolve_config_parses_build_tree_staging_settings(self) -> None:
+        repo_root = make_temp_repo("config-build-tree-settings")
+        write_build_config(repo_root)
+        payload = json.loads((repo_root / "build-config.json").read_text(encoding="utf-8"))
+        payload["build_tree"] = {
+            "source_mappings": [
+                {
+                    "source": "src",
+                    "destination": "src/maya_tool",
+                    "expand_children": True,
+                }
+            ],
+            "rewrite_local_imports": True,
+            "import_rewrites": {
+                "legacy_src": ".",
+            },
+        }
+        (repo_root / "build-config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        config = resolve_config(repo_root)
+
+        self.assertEqual(len(config.build.build_tree.source_mappings), 1)
+        self.assertEqual(config.build.build_tree.source_mappings[0].source, "src")
+        self.assertEqual(config.build.build_tree.source_mappings[0].destination, "src/maya_tool")
+        self.assertTrue(config.build.build_tree.source_mappings[0].expand_children)
+        self.assertTrue(config.build.build_tree.rewrite_local_imports)
+        self.assertEqual(config.build.build_tree.import_rewrites, {"legacy_src": "."})

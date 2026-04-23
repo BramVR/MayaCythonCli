@@ -454,7 +454,82 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('"Cython>=3.0"', pyproject_toml)
         self.assertIn('ARTIFACT_METADATA_FILE = "maya_cython_compile_artifact.json"', setup_py)
         self.assertIn('ARTIFACT_METADATA = dict(CONFIG["artifact_metadata"])', setup_py)
+        self.assertIn("find_packages", setup_py)
+        self.assertIn('PACKAGE_DIR = Path(CONFIG["package_dir"])', setup_py)
+        self.assertIn('build_dir="build/cython"', setup_py)
+        self.assertNotIn('PACKAGE_DIR = ROOT / CONFIG["package_dir"]', setup_py)
+        self.assertNotIn('build_dir=str(ROOT / "build" / "cython")', setup_py)
         self.assertIn('cmdclass={"build_py": build_py, "bdist_wheel": bdist_wheel}', setup_py)
+
+    def test_prepare_build_tree_can_stage_non_package_repo_layout_with_import_rewrites(self) -> None:
+        repo_root = make_temp_repo("pipeline-build-tree-staging")
+        (repo_root / "build-config.json").write_text(
+            json.dumps(
+                {
+                    "distribution_name": "curvenettool-maya",
+                    "package_name": "curvenettool",
+                    "package_dir": "src/curvenettool",
+                    "version": "0.1.0",
+                    "compiled_modules": ["ui", "rig"],
+                    "package_data": ["resources/*"],
+                    "smoke": {
+                        "compiled_modules": ["ui", "rig"],
+                        "resource_check": "resources/main_control.json",
+                    },
+                    "build_tree": {
+                        "source_mappings": [
+                            {
+                                "source": "src",
+                                "destination": "src/curvenettool",
+                                "expand_children": True,
+                            },
+                            {
+                                "source": "run.py",
+                                "destination": "src/curvenettool/run.py",
+                            },
+                        ],
+                        "rewrite_local_imports": True,
+                        "import_rewrites": {
+                            "src": ".",
+                        },
+                    },
+                    "default_target": "windows-2025",
+                    "targets": {
+                        "windows-2025": {
+                            "platform": "windows",
+                            "module_name": "CurveDeform",
+                            "maya_version": "2025",
+                            "python_version": "3.11",
+                        }
+                    },
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        source_root = repo_root / "src"
+        source_root.mkdir(parents=True, exist_ok=True)
+        (source_root / "ui.py").write_text("import rig\nfrom src import rig as legacy_rig\n", encoding="utf-8")
+        (source_root / "rig.py").write_text("VALUE = 1\n", encoding="utf-8")
+        resources_dir = source_root / "resources"
+        resources_dir.mkdir(parents=True, exist_ok=True)
+        (resources_dir / "main_control.json").write_text("{}", encoding="utf-8")
+        (repo_root / "run.py").write_text("from src import ui\n", encoding="utf-8")
+        config = resolve_config(repo_root, target="windows-2025")
+
+        build_root = prepare_build_tree(config)
+
+        staged_package = build_root / "src" / "curvenettool"
+        self.assertTrue((staged_package / "__init__.py").exists())
+        self.assertEqual(
+            (staged_package / "ui.py").read_text(encoding="utf-8"),
+            "from . import rig\nfrom . import rig as legacy_rig\n",
+        )
+        self.assertEqual(
+            (staged_package / "run.py").read_text(encoding="utf-8"),
+            "from . import ui\n",
+        )
+        self.assertTrue((staged_package / "resources" / "main_control.json").exists())
 
     def test_smoke_rejects_wheel_from_other_target_even_in_selected_dist_dir(self) -> None:
         repo_root = make_temp_repo("pipeline-smoke-wrong-target")

@@ -132,6 +132,9 @@ Legacy optional fields:
 | `smoke.callable` | string or null | `null` |
 | `smoke.compiled_modules` | array of strings | `compiled_modules` |
 | `smoke.resource_check` | string or null | `null` |
+| `build_tree.source_mappings` | array | `[]` |
+| `build_tree.rewrite_local_imports` | boolean | `false` |
+| `build_tree.import_rewrites` | object | `{}` |
 
 ### Named target schema
 
@@ -152,6 +155,63 @@ Each target entry may override any tracked build field. Common cases are:
 | `python_version` | string | target-specific Conda Python used to build the wheel |
 
 Nested `smoke` config is merged, so target entries can override only the smoke keys they need.
+Nested `build_tree` config is also merged, so target entries can override only the staging keys they need.
+
+### `build_tree`
+
+Use `build_tree` when the tracked repo is not already laid out as one clean Python package under `package_dir`.
+
+Supported keys:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `source_mappings` | array of objects | copy files or directories from the repo into the generated build tree before packaging |
+| `rewrite_local_imports` | boolean | rewrite top-level sibling imports such as `import rig` into package-relative imports inside the staged package |
+| `import_rewrites` | object | rewrite explicit import prefixes such as `from src import ui` into package-relative imports |
+
+Supported `source_mappings[]` fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `source` | path string | repo-relative source file or directory to copy |
+| `destination` | path string | destination path under the generated build root |
+| `expand_children` | boolean | when `true` for a directory, copy that directory's children into `destination` instead of copying the directory itself |
+
+If `source_mappings` is empty, the build tree keeps the old behavior and copies `package_dir` directly from the tracked repo.
+
+Example for a repo with loose modules under `src/`, root-level `run.py`, and a desired packaged target at `src/curvenettool`:
+
+```json
+{
+  "distribution_name": "curvenettool-maya",
+  "package_name": "curvenettool",
+  "package_dir": "src/curvenettool",
+  "version": "0.1.0",
+  "compiled_modules": ["ui", "rig", "network"],
+  "package_data": ["resources/*"],
+  "smoke": {
+    "compiled_modules": ["ui", "rig", "network"],
+    "resource_check": "resources/main_control.json"
+  },
+  "build_tree": {
+    "source_mappings": [
+      {
+        "source": "src",
+        "destination": "src/curvenettool",
+        "expand_children": true
+      },
+      {
+        "source": "run.py",
+        "destination": "src/curvenettool/run.py"
+      }
+    ],
+    "rewrite_local_imports": true,
+    "import_rewrites": {
+      "src": "."
+    }
+  }
+}
+```
 
 Current repo example:
 
@@ -167,6 +227,11 @@ Current repo example:
     "callable": "show_ui",
     "compiled_modules": ["_cy_logic"],
     "resource_check": "tool_manifest.json"
+  },
+  "build_tree": {
+    "source_mappings": [],
+    "rewrite_local_imports": false,
+    "import_rewrites": {}
   },
   "default_target": "windows-2025",
   "targets": {

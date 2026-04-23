@@ -34,6 +34,20 @@ class SmokeConfig:
 
 
 @dataclass(slots=True)
+class SourceMapping:
+    source: str
+    destination: str
+    expand_children: bool
+
+
+@dataclass(slots=True)
+class BuildTreeConfig:
+    source_mappings: list[SourceMapping]
+    rewrite_local_imports: bool
+    import_rewrites: dict[str, str]
+
+
+@dataclass(slots=True)
 class BuildConfig:
     target_name: str
     platform: str
@@ -47,6 +61,7 @@ class BuildConfig:
     compiled_modules: list[str]
     package_data: list[str]
     smoke: SmokeConfig
+    build_tree: BuildTreeConfig
 
 
 @dataclass(slots=True)
@@ -79,6 +94,7 @@ def load_build_config(
     resolved_target = _resolve_target_name(payload, target_name)
     build_payload = _resolve_build_payload(payload, resolved_target)
     smoke_payload = build_payload.get("smoke", {})
+    build_tree_payload = build_payload.get("build_tree", {})
     return (
         BuildConfig(
             target_name=resolved_target,
@@ -98,6 +114,11 @@ def load_build_config(
                     smoke_payload.get("compiled_modules", build_payload.get("compiled_modules", []))
                 ),
                 resource_check=smoke_payload.get("resource_check"),
+            ),
+            build_tree=BuildTreeConfig(
+                source_mappings=_parse_source_mappings(build_tree_payload.get("source_mappings", [])),
+                rewrite_local_imports=bool(build_tree_payload.get("rewrite_local_imports", False)),
+                import_rewrites=_parse_import_rewrites(build_tree_payload.get("import_rewrites", {})),
             ),
         ),
         _available_targets(payload),
@@ -185,6 +206,18 @@ def as_dict(config: ResolvedConfig) -> dict[str, Any]:
             "callable": config.build.smoke.callable,
             "compiled_modules": list(config.build.smoke.compiled_modules),
             "resource_check": config.build.smoke.resource_check,
+        },
+        "build_tree": {
+            "source_mappings": [
+                {
+                    "source": mapping.source,
+                    "destination": mapping.destination,
+                    "expand_children": mapping.expand_children,
+                }
+                for mapping in config.build.build_tree.source_mappings
+            ],
+            "rewrite_local_imports": config.build.build_tree.rewrite_local_imports,
+            "import_rewrites": dict(config.build.build_tree.import_rewrites),
         },
     }
 
@@ -278,3 +311,49 @@ def _normalize_platform(raw_platform: str) -> str:
     if normalized is None:
         raise ValueError(f"Unsupported target platform {raw_platform!r}.")
     return normalized
+
+
+def _parse_source_mappings(raw_value: Any) -> list[SourceMapping]:
+    if not isinstance(raw_value, list):
+        raise ValueError("build_tree.source_mappings in build-config.json must be an array.")
+
+    mappings: list[SourceMapping] = []
+    for index, item in enumerate(raw_value):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"build_tree.source_mappings[{index}] in build-config.json must be an object."
+            )
+        source = item.get("source")
+        destination = item.get("destination")
+        if not isinstance(source, str) or not source:
+            raise ValueError(
+                f"build_tree.source_mappings[{index}].source in build-config.json must be a non-empty string."
+            )
+        if not isinstance(destination, str) or not destination:
+            raise ValueError(
+                f"build_tree.source_mappings[{index}].destination in build-config.json must be a non-empty string."
+            )
+        mappings.append(
+            SourceMapping(
+                source=source,
+                destination=destination,
+                expand_children=bool(item.get("expand_children", False)),
+            )
+        )
+    return mappings
+
+
+def _parse_import_rewrites(raw_value: Any) -> dict[str, str]:
+    if not isinstance(raw_value, dict):
+        raise ValueError("build_tree.import_rewrites in build-config.json must be an object.")
+
+    rewrites: dict[str, str] = {}
+    for key, value in raw_value.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError("build_tree.import_rewrites keys in build-config.json must be non-empty strings.")
+        if not isinstance(value, str):
+            raise ValueError(
+                f"build_tree.import_rewrites[{key!r}] in build-config.json must be a string."
+            )
+        rewrites[key] = value
+    return rewrites
