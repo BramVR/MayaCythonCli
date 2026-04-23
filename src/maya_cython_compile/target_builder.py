@@ -262,12 +262,58 @@ def rewrite_python_imports(
         rewrite_local_imports=rewrite_local_imports,
         import_rewrites=import_rewrites,
     )
-    rewritten_tree = transformer.visit(tree)
-    ast.fix_missing_locations(rewritten_tree)
-    rendered = ast.unparse(rewritten_tree)
+    replacements: list[tuple[ast.stmt, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        rewritten = transformer.rewrite_node(node)
+        if rewritten is None:
+            continue
+        replacements.append((node, render_rewritten_import(node, rewritten, source)))
+
+    if not replacements:
+        return source
+
+    lines = source.splitlines()
+    for node, rendered in sorted(
+        replacements,
+        key=lambda item: (item[0].lineno, item[0].col_offset),
+        reverse=True,
+    ):
+        lines[node.lineno - 1 : node.end_lineno] = rendered.splitlines()
+
+    rendered_source = "\n".join(lines)
     if source.endswith("\n"):
-        rendered += "\n"
-    return rendered
+        rendered_source += "\n"
+    return rendered_source
+
+
+def render_rewritten_import(
+    original: ast.stmt,
+    rewritten: ast.stmt | list[ast.stmt],
+    source: str,
+) -> str:
+    statements = rewritten if isinstance(rewritten, list) else [rewritten]
+    indent = " " * getattr(original, "col_offset", 0)
+    trailing_comment = import_trailing_comment(original, source)
+    rendered_lines: list[str] = []
+    for index, statement in enumerate(statements):
+        line = ast.unparse(statement)
+        if index == 0 and trailing_comment:
+            line = f"{line}{trailing_comment}"
+        rendered_lines.append(f"{indent}{line}")
+    return "\n".join(rendered_lines)
+
+
+def import_trailing_comment(node: ast.stmt, source: str) -> str:
+    if node.lineno != node.end_lineno:
+        return ""
+    line = source.splitlines()[node.lineno - 1]
+    suffix = line[node.end_col_offset :]
+    comment_start = suffix.find("#")
+    if comment_start == -1:
+        return ""
+    return suffix.rstrip()
 
 
 def current_module_root(current_path: Path, package_target: Path) -> str | None:
@@ -321,6 +367,12 @@ class PackageImportTransformer(ast.NodeTransformer):
             return node
         module = ".".join(replacement) if replacement else None
         return ast.ImportFrom(module=module, names=node.names, level=1)
+
+    def rewrite_node(self, node: ast.Import | ast.ImportFrom) -> ast.stmt | list[ast.stmt] | None:
+        rewritten = self.visit(node)
+        if rewritten is node:
+            return None
+        return rewritten
 
     def rewrite_import_alias(self, alias: ast.alias) -> ast.stmt | list[ast.stmt] | None:
         replacement = self.rewrite_module_path(alias.name)
