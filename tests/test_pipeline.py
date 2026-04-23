@@ -566,6 +566,31 @@ class PipelineTests(unittest.TestCase):
             "# cython: language_level=3\nfrom . import rig  # keep local import note\nVALUE = 1\n",
         )
 
+    def test_rewrite_python_imports_preserves_semicolon_suffix_on_same_line(self) -> None:
+        rewritten = rewrite_python_imports(
+            "import rig; VALUE = 1\n",
+            current_path=Path("pkg/ui.py"),
+            package_target=Path("pkg"),
+            local_modules={"rig"},
+            rewrite_local_imports=True,
+            import_rewrites={},
+        )
+
+        self.assertEqual(rewritten, "from . import rig; VALUE = 1\n")
+
+    def test_rewrite_python_imports_preserves_tab_indentation_for_inserted_lines(self) -> None:
+        rewritten = rewrite_python_imports(
+            "if True:\n\timport rig.utils\n\tVALUE = rig.utils.VALUE\n",
+            current_path=Path("pkg/ui.py"),
+            package_target=Path("pkg"),
+            local_modules={"rig"},
+            rewrite_local_imports=True,
+            import_rewrites={},
+        )
+
+        self.assertIn("\n\t__import__", rewritten)
+        compile(rewritten, "<rewrite_python_imports>", "exec")
+
     def test_smoke_rejects_wheel_from_other_target_even_in_selected_dist_dir(self) -> None:
         repo_root = make_temp_repo("pipeline-smoke-wrong-target")
         write_multi_target_build_config(repo_root)

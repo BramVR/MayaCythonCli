@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -262,58 +263,77 @@ def rewrite_python_imports(
         rewrite_local_imports=rewrite_local_imports,
         import_rewrites=import_rewrites,
     )
-    replacements: list[tuple[ast.stmt, str]] = []
+    line_offsets = source_line_offsets(source)
+    replacements: list[tuple[int, int, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
         rewritten = transformer.rewrite_node(node)
         if rewritten is None:
             continue
-        replacements.append((node, render_rewritten_import(node, rewritten, source)))
+        start_offset, end_offset = node_span_offsets(node, line_offsets)
+        replacements.append(
+            (
+                start_offset,
+                end_offset,
+                render_rewritten_import(
+                    rewritten,
+                    indentation=import_indentation(node, source),
+                ),
+            )
+        )
 
     if not replacements:
         return source
 
-    lines = source.splitlines()
-    for node, rendered in sorted(
+    rendered_source = source
+    for start_offset, end_offset, rendered in sorted(
         replacements,
-        key=lambda item: (item[0].lineno, item[0].col_offset),
+        key=lambda item: item[0],
         reverse=True,
     ):
-        lines[node.lineno - 1 : node.end_lineno] = rendered.splitlines()
-
-    rendered_source = "\n".join(lines)
-    if source.endswith("\n"):
-        rendered_source += "\n"
+        rendered_source = rendered_source[:start_offset] + rendered + rendered_source[end_offset:]
     return rendered_source
 
 
 def render_rewritten_import(
-    original: ast.stmt,
     rewritten: ast.stmt | list[ast.stmt],
-    source: str,
+    *,
+    indentation: str,
 ) -> str:
     statements = rewritten if isinstance(rewritten, list) else [rewritten]
-    indent = " " * getattr(original, "col_offset", 0)
-    trailing_comment = import_trailing_comment(original, source)
-    rendered_lines: list[str] = []
-    for index, statement in enumerate(statements):
-        line = ast.unparse(statement)
-        if index == 0 and trailing_comment:
-            line = f"{line}{trailing_comment}"
-        rendered_lines.append(f"{indent}{line}")
+    if not statements:
+        return ""
+    rendered_lines = [ast.unparse(statements[0])]
+    for statement in statements[1:]:
+        rendered_lines.append(f"{indentation}{ast.unparse(statement)}")
     return "\n".join(rendered_lines)
 
 
-def import_trailing_comment(node: ast.stmt, source: str) -> str:
-    if node.lineno != node.end_lineno:
-        return ""
+def source_line_offsets(source: str) -> list[int]:
+    offsets: list[int] = []
+    current = 0
+    for line in source.splitlines(keepends=True):
+        offsets.append(current)
+        current += len(line)
+    if not offsets:
+        offsets.append(0)
+    return offsets
+
+
+def node_span_offsets(node: ast.stmt, line_offsets: list[int]) -> tuple[int, int]:
+    assert node.end_lineno is not None
+    assert node.end_col_offset is not None
+    start_offset = line_offsets[node.lineno - 1] + node.col_offset
+    end_offset = line_offsets[node.end_lineno - 1] + node.end_col_offset
+    return start_offset, end_offset
+
+
+def import_indentation(node: ast.stmt, source: str) -> str:
     line = source.splitlines()[node.lineno - 1]
-    suffix = line[node.end_col_offset :]
-    comment_start = suffix.find("#")
-    if comment_start == -1:
-        return ""
-    return suffix.rstrip()
+    match = re.match(r"^[ \t]*", line)
+    assert match is not None
+    return match.group(0)
 
 
 def current_module_root(current_path: Path, package_target: Path) -> str | None:
