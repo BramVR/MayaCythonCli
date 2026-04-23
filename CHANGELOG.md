@@ -16,6 +16,7 @@
 - Build flow: allow build-tree staging of non-package repo layouts through configurable source mappings and optional import rewrites before wheel creation.
 - Build flow: preserve dotted import bindings when local package imports are rewritten in staged build trees.
 - Build flow: preserve file directives and inline comments when staged import rewrites touch Python sources before wheel creation.
+- Build flow: keep rewritten dotted imports aligned with Python semantics by loading nested modules without binding extra names into the staged module namespace.
 - Build flow: keep generated extension source paths repo-relative so Windows target builds do not fail on duplicated absolute temp-path expansion.
 - Runtime probe: fall back to standard Maya and Python include and import-library layouts when `mayapy` leaves header or library paths blank or invalid.
 

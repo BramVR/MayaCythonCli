@@ -392,18 +392,32 @@ class PackageImportTransformer(ast.NodeTransformer):
         )
 
     def rewrite_import_chain(self, replacement: list[str]) -> list[ast.stmt]:
-        statements: list[ast.stmt] = [
-            ast.ImportFrom(module=None, names=[ast.alias(name=replacement[0], asname=None)], level=1)
-        ]
-        for index in range(1, len(replacement)):
-            statements.append(
-                ast.ImportFrom(
-                    module=".".join(replacement[:index]),
-                    names=[ast.alias(name=replacement[index], asname=None)],
-                    level=1,
+        dotted_name = ".".join(replacement)
+        return [
+            ast.ImportFrom(module=None, names=[ast.alias(name=replacement[0], asname=None)], level=1),
+            ast.Expr(
+                value=ast.Call(
+                    func=ast.Name(id="__import__", ctx=ast.Load()),
+                    args=[
+                        ast.JoinedStr(
+                            values=[
+                                ast.FormattedValue(
+                                    value=ast.Name(id="__package__", ctx=ast.Load()),
+                                    conversion=-1,
+                                ),
+                                ast.Constant(value=f".{dotted_name}"),
+                            ]
+                        )
+                    ],
+                    keywords=[
+                        ast.keyword(
+                            arg="fromlist",
+                            value=ast.List(elts=[ast.Constant(value="*")], ctx=ast.Load()),
+                        )
+                    ],
                 )
-            )
-        return statements
+            ),
+        ]
 
     def rewrite_module_path(self, module_name: str) -> list[str] | None:
         parts = module_name.split(".")

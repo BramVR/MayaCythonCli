@@ -545,10 +545,11 @@ class PipelineTests(unittest.TestCase):
             import_rewrites={},
         )
 
-        self.assertEqual(
-            rewritten,
-            "from . import rig\nfrom .rig import utils\nprint(rig.utils.VALUE)\n",
-        )
+        self.assertIn("from . import rig", rewritten)
+        self.assertIn("__import__", rewritten)
+        self.assertIn("fromlist=['*']", rewritten)
+        self.assertIn("print(rig.utils.VALUE)", rewritten)
+        self.assertNotIn("from .rig import utils", rewritten)
 
     def test_rewrite_python_imports_preserves_file_directives_and_inline_comments(self) -> None:
         rewritten = rewrite_python_imports(
