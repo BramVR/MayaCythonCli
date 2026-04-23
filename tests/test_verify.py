@@ -16,6 +16,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from maya_cython_compile.cli import main
+from maya_cython_compile.errors import DEPENDENCY_ERROR
+from maya_cython_compile.verify import VerifyStep, run_step
 from probe_fixtures import TMP_ROOT, make_temp_repo
 
 
@@ -186,3 +188,21 @@ class VerifyTests(unittest.TestCase):
         )
         self.assertEqual(payload["commands"][-1]["stdout_json"]["config"]["package_name"], "maya_tool")
         self.assertTrue(Path(payload["run_dir"]).is_dir())
+
+    def test_run_step_reports_missing_executable_as_dependency_failure(self) -> None:
+        steps_dir = make_temp_repo("verify-missing-executable")
+        missing_executable = steps_dir / "missing-command.exe"
+
+        result = run_step(
+            VerifyStep(
+                name="missing_step",
+                command=[str(missing_executable)],
+                cwd=steps_dir,
+            ),
+            steps_dir,
+            1,
+        )
+
+        self.assertEqual(result["returncode"], DEPENDENCY_ERROR)
+        self.assertIn("cannot find the file specified", "\n".join(result["stderr_tail"]).lower())
+        self.assertTrue((steps_dir / "01-missing_step.stderr.log").exists())

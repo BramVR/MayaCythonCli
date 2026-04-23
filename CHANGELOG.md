@@ -10,6 +10,7 @@
 
 - CLI: align interrupt handling and subprocess exit normalization, add a `--version` flag, repair the smoke validation script, and enforce the non-interactive `--dry-run` / `--force` safety contract for destructive steps.
 - CLI: add opt-in `--json-errors` failure payloads for agent retry loops and fix wheel artifact metadata so built packages carry the target fields later validation requires.
+- Verification: install the built CLI wheel directly inside `installed-cli-config-show` runs and surface missing step executables as step failures instead of internal verify crashes.
 - Assembly: make assembled Maya module outputs target-owned so different target builds do not clobber one another.
 - Config: resolve the default Conda path from `%USERPROFILE%` instead of a user-specific absolute path.
 - Build flow: allow build-tree staging of non-package repo layouts through configurable source mappings and optional import rewrites before wheel creation.

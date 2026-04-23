@@ -143,28 +143,37 @@ def run_step(step: VerifyStep, steps_dir: Path, index: int) -> dict[str, Any]:
     if step.env:
         env.update(step.env)
 
-    result = subprocess.run(
-        step.command,
-        cwd=str(step.cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    stdout_path.write_text(result.stdout, encoding="utf-8")
-    stderr_path.write_text(result.stderr, encoding="utf-8")
+    try:
+        result = subprocess.run(
+            step.command,
+            cwd=str(step.cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        stdout = result.stdout
+        stderr = result.stderr
+        returncode = result.returncode
+    except FileNotFoundError as exc:
+        stdout = ""
+        stderr = str(exc)
+        returncode = DEPENDENCY_ERROR
+
+    stdout_path.write_text(stdout, encoding="utf-8")
+    stderr_path.write_text(stderr, encoding="utf-8")
 
     return {
         "name": step.name,
         "argv": step.command,
         "cwd": str(step.cwd),
-        "returncode": result.returncode,
+        "returncode": returncode,
         "stdout_log": str(stdout_path),
         "stderr_log": str(stderr_path),
-        "stdout_json": parse_json_output(result.stdout) if step.expect_json else None,
-        "stderr_json": parse_json_output(result.stderr),
-        "stdout_tail": tail_lines(result.stdout),
-        "stderr_tail": tail_lines(result.stderr),
+        "stdout_json": parse_json_output(stdout) if step.expect_json else None,
+        "stderr_json": parse_json_output(stderr),
+        "stdout_tail": tail_lines(stdout),
+        "stderr_tail": tail_lines(stderr),
     }
 
 
@@ -346,6 +355,34 @@ def venv_console_script(venv_root: Path) -> Path:
     return venv_root / scripts_dir / script_name
 
 
+def venv_wheel_install_command(venv_root: Path, wheelhouse: Path) -> list[str]:
+    return [
+        str(venv_python(venv_root)),
+        "-c",
+        "\n".join(
+            [
+                "import subprocess",
+                "import sys",
+                "from pathlib import Path",
+                "",
+                "wheelhouse = Path(sys.argv[1])",
+                "wheels = sorted(wheelhouse.glob('maya_cython_compile-*.whl'))",
+                "if len(wheels) != 1:",
+                "    raise SystemExit(",
+                "        f'Expected exactly one maya-cython-compile wheel in {wheelhouse}, found {len(wheels)}.'",
+                "    )",
+                "",
+                "raise SystemExit(",
+                "    subprocess.call(",
+                "        [sys.executable, '-m', 'pip', 'install', '--no-deps', '--force-reinstall', str(wheels[0])]",
+                "    )",
+                ")",
+            ]
+        ),
+        str(wheelhouse),
+    ]
+
+
 def build_target_dry_run_steps(config: ResolvedConfig, run_dir: Path) -> list[VerifyStep]:
     del run_dir
     return [
@@ -395,16 +432,7 @@ def build_installed_cli_steps(config: ResolvedConfig, run_dir: Path) -> list[Ver
         ),
         VerifyStep(
             name="install_cli",
-            command=[
-                str(venv_python(venv_root)),
-                "-m",
-                "pip",
-                "install",
-                "--no-index",
-                "--find-links",
-                str(wheelhouse),
-                "maya-cython-compile",
-            ],
+            command=venv_wheel_install_command(venv_root, wheelhouse),
             cwd=config.repo_root,
         ),
         VerifyStep(
