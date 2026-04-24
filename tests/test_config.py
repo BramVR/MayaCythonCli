@@ -257,3 +257,77 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config.build.build_tree.source_mappings[0].expand_children)
         self.assertTrue(config.build.build_tree.rewrite_local_imports)
         self.assertEqual(config.build.build_tree.import_rewrites, {"legacy_src": "."})
+
+    def test_resolve_config_rejects_missing_required_build_field(self) -> None:
+        repo_root = make_temp_repo("config-missing-required")
+        write_build_config(repo_root)
+        payload = json.loads((repo_root / "build-config.json").read_text(encoding="utf-8"))
+        payload.pop("version")
+        (repo_root / "build-config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        with self.assertRaises(ValueError) as exc:
+            resolve_config(repo_root)
+
+        self.assertIn("missing required field 'version'", str(exc.exception))
+
+    def test_resolve_config_rejects_unknown_build_field(self) -> None:
+        repo_root = make_temp_repo("config-unknown-build-field")
+        write_build_config(repo_root)
+        payload = json.loads((repo_root / "build-config.json").read_text(encoding="utf-8"))
+        payload["unexpected"] = True
+        (repo_root / "build-config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        with self.assertRaises(ValueError) as exc:
+            resolve_config(repo_root)
+
+        self.assertIn("unsupported field(s): unexpected", str(exc.exception))
+
+    def test_resolve_config_rejects_non_string_compiled_modules(self) -> None:
+        repo_root = make_temp_repo("config-invalid-compiled-modules")
+        write_build_config(repo_root)
+        payload = json.loads((repo_root / "build-config.json").read_text(encoding="utf-8"))
+        payload["compiled_modules"] = ["_cy_logic", 42]
+        (repo_root / "build-config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        with self.assertRaises(ValueError) as exc:
+            resolve_config(repo_root)
+
+        self.assertIn("compiled_modules must be an array of non-empty strings", str(exc.exception))
+
+    def test_resolve_config_rejects_non_boolean_build_tree_flag(self) -> None:
+        repo_root = make_temp_repo("config-invalid-build-tree-flag")
+        write_build_config(repo_root)
+        payload = json.loads((repo_root / "build-config.json").read_text(encoding="utf-8"))
+        payload["build_tree"] = {"rewrite_local_imports": "yes"}
+        (repo_root / "build-config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+        with self.assertRaises(ValueError) as exc:
+            resolve_config(repo_root)
+
+        self.assertIn("build_tree.rewrite_local_imports must be a boolean", str(exc.exception))
+
+    def test_resolve_config_rejects_unknown_local_config_field(self) -> None:
+        repo_root = make_temp_repo("config-unknown-local-field")
+        write_build_config(repo_root)
+        (repo_root / ".maya-cython-compile.json").write_text(
+            json.dumps({"conda_exe": "conda", "unexpected": True}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(ValueError) as exc:
+            resolve_config(repo_root)
+
+        self.assertIn("local config contains unsupported field(s): unexpected", str(exc.exception))
+
+    def test_resolve_config_rejects_non_object_local_target(self) -> None:
+        repo_root = make_temp_repo("config-invalid-local-target")
+        write_multi_target_build_config(repo_root)
+        (repo_root / ".maya-cython-compile.json").write_text(
+            json.dumps({"targets": {"linux-2024": "bad"}}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(ValueError) as exc:
+            resolve_config(repo_root)
+
+        self.assertIn("Local config target 'linux-2024' must be an object", str(exc.exception))

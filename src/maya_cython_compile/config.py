@@ -24,6 +24,34 @@ PLATFORM_ALIASES = {
     "darwin": "macos",
     "osx": "macos",
 }
+BUILD_CONFIG_KEYS = {
+    "build_tree",
+    "compiled_modules",
+    "default_target",
+    "distribution_name",
+    "maya_version",
+    "module_name",
+    "package_data",
+    "package_dir",
+    "package_name",
+    "platform",
+    "python_version",
+    "smoke",
+    "targets",
+    "version",
+}
+REQUIRED_BUILD_KEYS = {
+    "compiled_modules",
+    "distribution_name",
+    "package_dir",
+    "package_name",
+    "version",
+}
+SMOKE_KEYS = {"callable", "compiled_modules", "resource_check"}
+BUILD_TREE_KEYS = {"source_mappings", "rewrite_local_imports", "import_rewrites"}
+SOURCE_MAPPING_KEYS = {"source", "destination", "expand_children"}
+LOCAL_CONFIG_KEYS = {"target", "conda_exe", "env_path", "maya_py", "targets"}
+LOCAL_TARGET_KEYS = {"conda_exe", "env_path", "maya_py"}
 
 
 @dataclass(slots=True)
@@ -91,10 +119,12 @@ def load_build_config(
     payload: dict[str, Any] | None = None,
 ) -> tuple[BuildConfig, tuple[str, ...]]:
     payload = payload or _read_json(repo_root / "build-config.json")
+    _validate_build_config_payload(payload)
     resolved_target = _resolve_target_name(payload, target_name)
     build_payload = _resolve_build_payload(payload, resolved_target)
-    smoke_payload = build_payload.get("smoke", {})
-    build_tree_payload = build_payload.get("build_tree", {})
+    _validate_resolved_build_payload(build_payload, subject=f"build-config.json target {resolved_target!r}")
+    smoke_payload = build_payload.get("smoke") or {}
+    build_tree_payload = build_payload.get("build_tree") or {}
     return (
         BuildConfig(
             target_name=resolved_target,
@@ -137,6 +167,7 @@ def resolve_config(
     repo_root = repo_root.resolve()
     config_file = Path(config_path).resolve() if config_path else default_config_path(repo_root)
     file_payload = _read_json(config_file) if config_file.exists() else {}
+    _validate_local_config_payload(file_payload)
     build_payload = _read_json(repo_root / "build-config.json")
     build, available_targets = load_build_config(
         repo_root,
@@ -223,7 +254,10 @@ def as_dict(config: ResolvedConfig) -> dict[str, Any]:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path.name} must be a JSON object.")
+    return payload
 
 
 def _resolve_path(repo_root: Path, raw_path: str) -> Path:
@@ -357,3 +391,134 @@ def _parse_import_rewrites(raw_value: Any) -> dict[str, str]:
             )
         rewrites[key] = value
     return rewrites
+
+
+def _validate_build_config_payload(payload: dict[str, Any]) -> None:
+    _reject_unknown_keys(payload, BUILD_CONFIG_KEYS, "build-config.json")
+    targets = payload.get("targets")
+    if targets is not None:
+        if not isinstance(targets, dict) or not targets:
+            raise ValueError("build-config.json targets must be a non-empty object when provided.")
+        for target_name, target_payload in targets.items():
+            if not isinstance(target_name, str) or not target_name:
+                raise ValueError("build-config.json target names must be non-empty strings.")
+            if not isinstance(target_payload, dict):
+                raise ValueError(f"Target {target_name!r} in build-config.json must be an object.")
+            _reject_unknown_keys(
+                target_payload,
+                BUILD_CONFIG_KEYS - {"default_target", "targets"},
+                f"target {target_name!r}",
+            )
+    default_target = payload.get("default_target")
+    if default_target is not None and (not isinstance(default_target, str) or not default_target):
+        raise ValueError("build-config.json default_target must be a non-empty string.")
+
+
+def _validate_resolved_build_payload(payload: dict[str, Any], *, subject: str) -> None:
+    for key in sorted(REQUIRED_BUILD_KEYS):
+        if key not in payload:
+            raise ValueError(f"{subject} missing required field {key!r}.")
+
+    _require_non_empty_string(payload, "distribution_name", subject)
+    _require_non_empty_string(payload, "package_name", subject)
+    _require_non_empty_string(payload, "package_dir", subject)
+    _require_non_empty_string(payload, "version", subject)
+    _require_optional_non_empty_string(payload, "module_name", subject)
+    _require_optional_non_empty_string(payload, "python_version", subject)
+    _require_string_or_number(payload, "maya_version", subject)
+    _require_string_list(payload, "compiled_modules", subject)
+    _require_optional_string_list(payload, "package_data", subject)
+    _validate_smoke_payload(payload.get("smoke", {}), subject=subject)
+    _validate_build_tree_payload(payload.get("build_tree", {}), subject=subject)
+
+
+def _validate_smoke_payload(raw_value: Any, *, subject: str) -> None:
+    if raw_value is None:
+        return
+    if not isinstance(raw_value, dict):
+        raise ValueError(f"{subject} smoke must be an object.")
+    _reject_unknown_keys(raw_value, SMOKE_KEYS, f"{subject} smoke")
+    _require_optional_non_empty_string(raw_value, "callable", f"{subject} smoke")
+    _require_optional_non_empty_string(raw_value, "resource_check", f"{subject} smoke")
+    _require_optional_string_list(raw_value, "compiled_modules", f"{subject} smoke")
+
+
+def _validate_build_tree_payload(raw_value: Any, *, subject: str) -> None:
+    if raw_value is None:
+        return
+    if not isinstance(raw_value, dict):
+        raise ValueError(f"{subject} build_tree must be an object.")
+    _reject_unknown_keys(raw_value, BUILD_TREE_KEYS, f"{subject} build_tree")
+    if "rewrite_local_imports" in raw_value and not isinstance(raw_value["rewrite_local_imports"], bool):
+        raise ValueError(f"{subject} build_tree.rewrite_local_imports must be a boolean.")
+    if "source_mappings" in raw_value:
+        _validate_source_mappings(raw_value["source_mappings"], subject=subject)
+    if "import_rewrites" in raw_value:
+        _parse_import_rewrites(raw_value["import_rewrites"])
+
+
+def _validate_source_mappings(raw_value: Any, *, subject: str) -> None:
+    if not isinstance(raw_value, list):
+        raise ValueError(f"{subject} build_tree.source_mappings must be an array.")
+    for index, item in enumerate(raw_value):
+        if not isinstance(item, dict):
+            raise ValueError(f"{subject} build_tree.source_mappings[{index}] must be an object.")
+        _reject_unknown_keys(item, SOURCE_MAPPING_KEYS, f"{subject} build_tree.source_mappings[{index}]")
+        if "expand_children" in item and not isinstance(item["expand_children"], bool):
+            raise ValueError(f"{subject} build_tree.source_mappings[{index}].expand_children must be a boolean.")
+
+
+def _validate_local_config_payload(payload: dict[str, Any]) -> None:
+    _reject_unknown_keys(payload, LOCAL_CONFIG_KEYS, "local config")
+    for key in ("target", "conda_exe", "env_path", "maya_py"):
+        _require_optional_non_empty_string(payload, key, "local config")
+
+    targets = payload.get("targets")
+    if targets is None:
+        return
+    if not isinstance(targets, dict):
+        raise ValueError("local config targets must be an object.")
+    for target_name, target_payload in targets.items():
+        if not isinstance(target_name, str) or not target_name:
+            raise ValueError("local config target names must be non-empty strings.")
+        if not isinstance(target_payload, dict):
+            raise ValueError(f"Local config target {target_name!r} must be an object.")
+        _reject_unknown_keys(target_payload, LOCAL_TARGET_KEYS, f"local config target {target_name!r}")
+        for key in LOCAL_TARGET_KEYS:
+            _require_optional_non_empty_string(target_payload, key, f"local config target {target_name!r}")
+
+
+def _reject_unknown_keys(payload: dict[str, Any], allowed: set[str], subject: str) -> None:
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        raise ValueError(f"{subject} contains unsupported field(s): {', '.join(unknown)}.")
+
+
+def _require_non_empty_string(payload: dict[str, Any], key: str, subject: str) -> None:
+    if not isinstance(payload.get(key), str) or not payload[key]:
+        raise ValueError(f"{subject} {key} must be a non-empty string.")
+
+
+def _require_optional_non_empty_string(payload: dict[str, Any], key: str, subject: str) -> None:
+    if key not in payload or payload[key] is None:
+        return
+    if not isinstance(payload[key], str) or not payload[key]:
+        raise ValueError(f"{subject} {key} must be a non-empty string.")
+
+
+def _require_string_or_number(payload: dict[str, Any], key: str, subject: str) -> None:
+    if key not in payload:
+        return
+    if not isinstance(payload[key], (str, int, float)) or isinstance(payload[key], bool):
+        raise ValueError(f"{subject} {key} must be a string or number.")
+
+
+def _require_string_list(payload: dict[str, Any], key: str, subject: str) -> None:
+    if not isinstance(payload.get(key), list) or not all(isinstance(item, str) and item for item in payload[key]):
+        raise ValueError(f"{subject} {key} must be an array of non-empty strings.")
+
+
+def _require_optional_string_list(payload: dict[str, Any], key: str, subject: str) -> None:
+    if key not in payload:
+        return
+    _require_string_list(payload, key, subject)

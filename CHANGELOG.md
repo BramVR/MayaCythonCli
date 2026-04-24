@@ -14,6 +14,7 @@
 - Verification: install the built CLI wheel directly inside `installed-cli-config-show` runs and surface missing step executables as step failures instead of internal verify crashes.
 - Assembly: make assembled Maya module outputs target-owned so different target builds do not clobber one another.
 - Config: resolve the default Conda path from `%USERPROFILE%` instead of a user-specific absolute path.
+- Config: validate build and local config schemas up front, including unsupported keys, required build fields, and nested value types.
 - Build flow: allow build-tree staging of non-package repo layouts through configurable source mappings and optional import rewrites before wheel creation.
 - Build flow: preserve dotted import bindings when local package imports are rewritten in staged build trees.
 - Build flow: preserve file directives and inline comments when staged import rewrites touch Python sources before wheel creation.

@@ -109,6 +109,8 @@ Example:
 
 Tracked build metadata must live at [../build-config.json](../build-config.json).
 
+The CLI validates this file before resolving the selected target. Config payloads must be JSON objects, unsupported keys are rejected, required fields are reported by name, and nested `smoke`, `build_tree`, and local target overrides must use the documented types. This keeps typos such as `compiled_module` or string values for boolean flags from silently changing the build.
+
 ### Legacy single-target schema
 
 Legacy flat configs still work. They are treated as the implicit target `default` with platform `windows`.
