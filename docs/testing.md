@@ -79,22 +79,32 @@ Notes:
 
 ## External Repo Validation
 
-When validating this CLI against another repo without installing the CLI into that repo, run the source checkout by setting `PYTHONPATH` to this repo's `src/` directory:
+When validating this CLI against another repo without installing the CLI into that repo, run the source checkout by setting `PYTHONPATH` to this repo's `src/` directory. Use placeholders for the builder checkout, the external repo, and the target under test:
 
 ```powershell
-$env:PYTHONPATH = "C:\PROJECTS\GG\gg_CythonCompile\src"
-C:\PROJECTS\GG\gg_CythonCompile\.conda\windows-2025\python.exe -m maya_cython_compile --repo-root C:\PROJECTS\GG\curvenettool --target windows-2025 --json --json-errors verify --scenario target-dry-run
-C:\PROJECTS\GG\gg_CythonCompile\.conda\windows-2025\python.exe -m maya_cython_compile --repo-root C:\PROJECTS\GG\curvenettool --target windows-2025 --json --json-errors verify --scenario target-run
+$env:PYTHONPATH = "<builder-repo>\src"
+<builder-python> -m maya_cython_compile --repo-root <external-repo> --target <target> --json --json-errors verify --scenario target-dry-run
+<builder-python> -m maya_cython_compile --repo-root <external-repo> --target <target> --json --json-errors verify --scenario target-run
 ```
 
-The CurvenetTool `matteo` branch was used as a real-world Windows Maya 2025 validation case on 2026-04-24. The tested repo was a flat Maya script layout staged into package `curvenettool` through `build_tree.source_mappings`, `rewrite_local_imports`, and `import_rewrites`.
+Recommended agent flow:
 
-The full `target-run` passed:
+1. Inspect the external repo layout and identify whether it is already a Python package or a flat Maya script layout.
+2. Add or propose the minimum `build-config.json` and `environment.yml` needed for that repo.
+3. For flat layouts, stage files into a package with `build_tree.source_mappings`.
+4. Enable `rewrite_local_imports` and `import_rewrites` only when imports rely on the source root being injected into `sys.path`.
+5. Run `target-dry-run` first and check that `doctor` resolves the intended Maya runtime, Conda env, target metadata, and output paths.
+6. Promote to `target-run`.
+7. Confirm that the wheel, artifact manifest, smoke extraction, assembled module, and release zip were produced under the selected target's output directories.
+8. Do not commit generated `.conda/`, `build/`, or `dist/` outputs to the external repo.
 
-- created `.conda/windows-2025`
-- built `dist/windows-2025/curvenettool_maya-0.1.0-cp311-cp311-win_amd64.whl`
-- smoked the compiled modules under `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
-- assembled `dist/module/windows-2025/CurveDeform/`
-- packaged `dist/release/windows-2025/CurveDeform-0.1.0-maya2025-windows.zip`
+For a successful external-repo run, expect target-scoped outputs shaped like:
 
-The smoke step emitted a non-fatal Maya SWIG memory warning after the configured resource check returned `True`.
+- `.conda/<target>/`
+- `dist/<target>/<distribution>-<version>-<abi>.whl`
+- `dist/<target>/artifact.json`
+- `build/smoke/<target>/wheel/`
+- `dist/module/<target>/<ModuleName>/`
+- `dist/release/<target>/<ModuleName>-<version>-maya<MayaVersion>-<platform>.zip`
+
+A real flat-layout Maya tool was validated this way for a Windows Maya 2025 target. The full `target-run` built the Cython wheel, smoked the compiled modules under Maya `mayapy`, assembled the Maya module, and produced the release zip. The smoke step may still emit non-fatal Maya runtime warnings after configured smoke checks pass.
