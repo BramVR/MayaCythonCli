@@ -98,7 +98,7 @@ Recommended agent flow:
 7. Confirm that the wheel, artifact manifest, smoke extraction, assembled module, and release zip were produced under the selected target's output directories.
 8. Do not commit generated `.conda/`, `build/`, or `dist/` outputs to the external repo.
 
-For a successful external-repo run, expect target-scoped outputs shaped like:
+After `target-run` succeeds, inspect the target-scoped outputs before handing off:
 
 - `.conda/<target>/`
 - `dist/<target>/<distribution>-<version>-<abi>.whl`
@@ -107,4 +107,4 @@ For a successful external-repo run, expect target-scoped outputs shaped like:
 - `dist/module/<target>/<ModuleName>/`
 - `dist/release/<target>/<ModuleName>-<version>-maya<MayaVersion>-<platform>.zip`
 
-A real flat-layout Maya tool was validated this way for a Windows Maya 2025 target. The full `target-run` built the Cython wheel, smoked the compiled modules under Maya `mayapy`, assembled the Maya module, and produced the release zip. The smoke step may still emit non-fatal Maya runtime warnings after configured smoke checks pass.
+Treat the run as complete only when the release zip exists, `artifact.json` points to the built wheel, and the smoke step exited successfully. Non-fatal Maya runtime warnings can appear after configured smoke checks pass; record them in the handoff if they are relevant, but do not treat them as failures without a non-zero exit code.
