@@ -8,6 +8,7 @@ from typing import Any
 
 from .config import ResolvedConfig
 from .errors import BUILD_ERROR, USAGE_ERROR, CliError
+from .filesystem import ensure_path_within_directory
 
 ARTIFACT_MANIFEST_FILENAME = "artifact.json"
 RELEASE_INSTALL_FILENAME = "INSTALL.txt"
@@ -17,12 +18,13 @@ RELEASE_INSTALL_FILENAME = "INSTALL.txt"
 class DeletionTarget:
     path: Path
     reason: str
+    root: Path | None = None
 
 
 def plan_create_env_refresh(config: ResolvedConfig) -> list[DeletionTarget]:
     if not config.local.env_path.exists():
         return []
-    return [DeletionTarget(config.local.env_path, "replace existing Conda environment")]
+    return [DeletionTarget(config.local.env_path, "replace existing Conda environment", config.local.env_path)]
 
 
 def plan_build_cleanup(config: ResolvedConfig) -> list[DeletionTarget]:
@@ -42,29 +44,29 @@ def plan_build_cleanup(config: ResolvedConfig) -> list[DeletionTarget]:
         ),
     ):
         if path.exists():
-            deletion_targets.append(DeletionTarget(path, reason))
+            deletion_targets.append(DeletionTarget(path, reason, config.repo_root))
     for egg_info in sorted(config.repo_root.glob("*.egg-info")):
         if egg_info.is_dir():
-            deletion_targets.append(DeletionTarget(egg_info, "remove stale egg-info metadata"))
+            deletion_targets.append(DeletionTarget(egg_info, "remove stale egg-info metadata", config.repo_root))
     return deletion_targets
 
 
 def plan_smoke_cleanup(extract_dir: Path) -> list[DeletionTarget]:
     if not extract_dir.exists():
         return []
-    return [DeletionTarget(extract_dir, "replace previous smoke extraction")]
+    return [DeletionTarget(extract_dir, "replace previous smoke extraction", extract_dir)]
 
 
 def plan_assemble_cleanup(module_root: Path) -> list[DeletionTarget]:
     if not module_root.exists():
         return []
-    return [DeletionTarget(module_root, "replace previous assembled module output")]
+    return [DeletionTarget(module_root, "replace previous assembled module output", module_root)]
 
 
 def plan_package_cleanup(release_dir: Path) -> list[DeletionTarget]:
     if not release_dir.exists():
         return []
-    return [DeletionTarget(release_dir, "replace previous release package output")]
+    return [DeletionTarget(release_dir, "replace previous release package output", release_dir)]
 
 
 def plan_pipeline_cleanup(
@@ -191,6 +193,13 @@ def write_target_environment_file(config: ResolvedConfig, destination: Path) -> 
 
 def delete_paths(paths: list[DeletionTarget]) -> None:
     for target in paths:
+        if target.root is not None:
+            ensure_path_within_directory(
+                target.path,
+                target.root,
+                subject=f"Deletion target {target.path}",
+                error_code=USAGE_ERROR,
+            )
         if target.path.is_dir():
             shutil.rmtree(target.path)
         elif target.path.exists():

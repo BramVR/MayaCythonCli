@@ -16,7 +16,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from maya_cython_compile.config import resolve_config
-from maya_cython_compile.errors import DEPENDENCY_ERROR, SMOKE_ERROR, CliError
+from maya_cython_compile.errors import ASSEMBLE_ERROR, DEPENDENCY_ERROR, SMOKE_ERROR, CliError
 from maya_cython_compile.pipeline import (
     ARTIFACT_MANIFEST_FILENAME,
     assemble,
@@ -191,6 +191,16 @@ def write_fake_artifact_wheel(
             encoding="utf-8",
         )
     return wheel_path
+
+
+def append_wheel_member_and_refresh_manifest(repo_root: Path, wheel_path: Path, member_name: str) -> None:
+    with zipfile.ZipFile(wheel_path, "a") as archive:
+        archive.writestr(member_name, "unsafe")
+
+    manifest_path = wheel_path.parent / ARTIFACT_MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["sha256"] = hashlib.sha256(wheel_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
 class PipelineTests(unittest.TestCase):
@@ -616,6 +626,54 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(exc.exception.exit_code, SMOKE_ERROR)
         self.assertIn("does not match selected target linux-2024", str(exc.exception))
 
+    def test_smoke_rejects_wheel_with_unsafe_archive_member(self) -> None:
+        repo_root = make_temp_repo("pipeline-smoke-unsafe-wheel-member")
+        write_multi_target_build_config(repo_root)
+        wheel_path = write_fake_artifact_wheel(
+            repo_root,
+            target_name="linux-2024",
+            platform="linux",
+            maya_version="2024",
+            python_version="3.11",
+            module_name="MayaToolLinux",
+        )
+        append_wheel_member_and_refresh_manifest(repo_root, wheel_path, "../escape.py")
+        config = resolve_config(
+            repo_root,
+            target="linux-2024",
+            maya_py=sys.executable,
+        )
+
+        with self.assertRaises(CliError) as exc:
+            smoke(config, force=True)
+
+        self.assertEqual(exc.exception.exit_code, SMOKE_ERROR)
+        self.assertIn("Archive member path is unsafe", str(exc.exception))
+
+    def test_assemble_rejects_wheel_with_unsafe_archive_member(self) -> None:
+        repo_root = make_temp_repo("pipeline-assemble-unsafe-wheel-member")
+        write_multi_target_build_config(repo_root)
+        wheel_path = write_fake_artifact_wheel(
+            repo_root,
+            target_name="windows-2025",
+            platform="windows",
+            maya_version="2025",
+            python_version="3.11",
+            module_name="MayaToolWin",
+        )
+        append_wheel_member_and_refresh_manifest(repo_root, wheel_path, "maya_tool/../../escape.py")
+        config = resolve_config(
+            repo_root,
+            target="windows-2025",
+            maya_py=sys.executable,
+        )
+
+        with self.assertRaises(CliError) as exc:
+            assemble(config, force=True)
+
+        self.assertEqual(exc.exception.exit_code, ASSEMBLE_ERROR)
+        self.assertIn("Archive member path is unsafe", str(exc.exception))
+
     def test_assemble_writes_target_specific_mod_files_without_cross_target_conflicts(self) -> None:
         repo_root = make_temp_repo("pipeline-assemble-cross-target")
         write_cross_platform_build_config(repo_root)
@@ -687,6 +745,30 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("Extract this zip", install_text)
         self.assertIn("import maya_tool", install_text)
         self.assertIn("maya_tool.show_ui()", install_text)
+
+    def test_prepare_build_tree_rejects_source_mapping_destination_outside_build_root(self) -> None:
+        repo_root = make_temp_repo("pipeline-build-tree-unsafe-destination")
+        write_multi_target_build_config(repo_root)
+        payload = json.loads((repo_root / "build-config.json").read_text(encoding="utf-8"))
+        payload["build_tree"] = {
+            "source_mappings": [
+                {
+                    "source": "src",
+                    "destination": "../escape",
+                }
+            ]
+        }
+        (repo_root / "build-config.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        source_root = repo_root / "src"
+        source_root.mkdir(parents=True, exist_ok=True)
+        (source_root / "ui.py").write_text("VALUE = 1\n", encoding="utf-8")
+        config = resolve_config(repo_root, target="windows-2025")
+
+        with self.assertRaises(ValueError) as exc:
+            prepare_build_tree(config)
+
+        self.assertIn("build_tree destination path", str(exc.exception))
+        self.assertFalse((repo_root / "build" / "target-build" / "escape").exists())
 
     def test_run_pipeline_executes_full_workflow_in_order_when_ensure_env_creates_missing_env(self) -> None:
         repo_root = make_temp_repo("pipeline-run-order")

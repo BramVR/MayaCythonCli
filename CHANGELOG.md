@@ -21,6 +21,7 @@
 - Build flow: preserve exact same-line suffixes and tab indentation when import rewrites replace statements inside staged Python sources.
 - Build flow: keep generated extension source paths repo-relative so Windows target builds do not fail on duplicated absolute temp-path expansion.
 - Runtime probe: fall back to standard Maya and Python include and import-library layouts when `mayapy` leaves header or library paths blank or invalid.
+- Build flow: reject source mappings and wheel archive members that would escape the expected build, smoke, or assembly directories.
 
 ### Docs
 

@@ -33,6 +33,7 @@ from .errors import (
     SMOKE_ERROR,
     CliError,
 )
+from .filesystem import safe_extract_all, safe_extract_member
 from .paths import (
     ARTIFACT_MANIFEST_FILENAME,
     RELEASE_INSTALL_FILENAME,
@@ -317,7 +318,7 @@ def smoke(
         raise CliError("No built wheel found for smoke step.", SMOKE_ERROR)
 
     with zipfile.ZipFile(wheel) as archive:
-        archive.extractall(extract_dir)
+        safe_extract_all(archive, extract_dir, error_code=SMOKE_ERROR)
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(extract_dir)
@@ -375,7 +376,7 @@ def assemble(
             top = member.filename.split("/", 1)[0]
             if top.endswith(".dist-info") or top.endswith(".data"):
                 continue
-            archive.extract(member, scripts_root)
+            safe_extract_member(archive, member, scripts_root, error_code=ASSEMBLE_ERROR)
 
     mod_path.write_text(render_module_definition(config), encoding="utf-8")
     return {

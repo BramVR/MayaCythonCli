@@ -73,6 +73,7 @@ The build tree can now stage non-package repo layouts before the wheel build sta
 
 - default mode copies `package_dir` directly into the generated tree
 - `build_tree.source_mappings` can copy arbitrary repo files or directories into target paths under the generated tree
+- source mapping inputs must resolve inside the repo root, and mapping destinations must resolve inside the generated build root
 - `build_tree.rewrite_local_imports` can rewrite sibling imports like `import rig` into package-relative imports inside the staged package
 - `build_tree.import_rewrites` can remap explicit prefixes such as `from src import ui` into package-relative imports
 
@@ -116,7 +117,7 @@ That assembled module root is then packaged into the user-facing release artifac
 
 - `dist/release/<target>/<ModuleName>-<version>-maya<MayaVersion>-<platform>.zip`
 
-Before extraction, assembly validates the manifest-selected wheel hash and confirms that its embedded target metadata still matches the selected target name, platform, Maya version, Python version, distribution, package, module, and version. That prevents wheels built for one Maya target from being silently consumed by another target when filenames happen to overlap.
+Before extraction, assembly validates the manifest-selected wheel hash and confirms that its embedded target metadata still matches the selected target name, platform, Maya version, Python version, distribution, package, module, and version. That prevents wheels built for one Maya target from being silently consumed by another target when filenames happen to overlap. Smoke extraction and module assembly also reject archive members with absolute paths or parent-directory traversal before extracting wheel contents.
 
 Assembly skips wheel metadata directories ending in `.dist-info` and `.data`. The `.mod` file is rendered from the resolved target metadata, so the module name, `MAYAVERSION:`, and `PLATFORM:` all come from the selected target instead of loose assembly-only flags. Because the module root is `dist/module/<target>/<ModuleName>/`, different platform or Maya-version targets do not clobber one another even when they reuse the same module name.
 

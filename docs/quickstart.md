@@ -115,6 +115,7 @@ The build step:
 - cleans prior target-scoped build artifacts when `--force` allows it
 - prepares `build/target-build/<target>/`
 - stages the package contents into that build tree, either by copying `package_dir` directly or by applying optional `build_tree.source_mappings` first
+- rejects source mappings that resolve outside the repo root or destination mappings that resolve outside the generated build root
 - can rewrite package-local imports inside the staged tree when `build_tree.rewrite_local_imports` or `build_tree.import_rewrites` is configured
 - uses repo-relative extension source paths inside the generated build tree so Windows wheel builds do not trip over duplicated absolute temp paths
 - writes a generated `pyproject.toml` plus `setup.py` into that target build tree
@@ -129,7 +130,7 @@ maya-cython-compile --target windows-2025 smoke --dry-run
 maya-cython-compile --target windows-2025 smoke --force
 ```
 
-The smoke step resolves `dist/<target>/artifact.json`, verifies the referenced wheel hash, checks that the wheel's `.dist-info` target metadata matches the selected target, extracts it to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and validates the configured imports, callable, and resource check under `mayapy`. If the manifest is missing or the wheel metadata does not match, rebuild that target first.
+The smoke step resolves `dist/<target>/artifact.json`, verifies the referenced wheel hash, checks that the wheel's `.dist-info` target metadata matches the selected target, safely extracts it to `build/smoke/<target>/wheel/`, sets `PYTHONPATH` to that extraction root, and validates the configured imports, callable, and resource check under `mayapy`. If the manifest is missing or the wheel metadata does not match, rebuild that target first.
 
 `mayapy` can still emit runtime warnings during a successful smoke run. Treat the step as passed when the command exits `0` and the configured smoke checks succeed; inspect the smoke logs if you need to distinguish a Maya warning from a packaging failure.
 

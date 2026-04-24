@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from .config import ResolvedConfig, SourceMapping
+from .filesystem import ensure_relative_path_under
 
 ARTIFACT_METADATA_FILENAME = "maya_cython_compile_artifact.json"
 
@@ -184,8 +185,16 @@ def stage_package_sources(config: ResolvedConfig, build_root: Path, package_targ
 
 
 def apply_source_mapping(repo_root: Path, build_root: Path, mapping: SourceMapping) -> None:
-    source = (repo_root / mapping.source).resolve()
-    destination = build_root / mapping.destination
+    source = ensure_relative_path_under(
+        repo_root / mapping.source,
+        repo_root,
+        subject=f"build_tree source path {mapping.source!r}",
+    )
+    destination = ensure_relative_path_under(
+        build_root / mapping.destination,
+        build_root,
+        subject=f"build_tree destination path {mapping.destination!r}",
+    )
     if not source.exists():
         raise FileNotFoundError(f"Configured build_tree source path does not exist: {source}")
 
