@@ -224,3 +224,5 @@ One common case is a flat Maya tool repo with loose modules under `src/`, resour
 - map root launch scripts such as `run.py` into the package if you want them shipped
 - enable `rewrite_local_imports` for sibling imports such as `import rig`
 - add `import_rewrites` entries for explicit prefixes such as `from src import ui`
+
+This pattern was validated against the CurvenetTool `matteo` branch for `windows-2025`. The full `verify --scenario target-run` flow built CPython 3.11 Windows extensions, smoked them under Maya 2025 `mayapy`, assembled the `CurveDeform` module, and produced `dist/release/windows-2025/CurveDeform-0.1.0-maya2025-windows.zip`.

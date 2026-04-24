@@ -76,3 +76,25 @@ Notes:
 - `target-dry-run` does not prove that `<repo-root>/environment.yml` exists, because it only previews the `create-env` command.
 - `target-run` does require `<repo-root>/environment.yml` once it reaches `create-env`.
 - A successful smoke run can still contain non-fatal Maya warnings in `smoke_output`. Use the verify step exit code plus the smoke logs together when triaging.
+
+## External Repo Validation
+
+When validating this CLI against another repo without installing the CLI into that repo, run the source checkout by setting `PYTHONPATH` to this repo's `src/` directory:
+
+```powershell
+$env:PYTHONPATH = "C:\PROJECTS\GG\gg_CythonCompile\src"
+C:\PROJECTS\GG\gg_CythonCompile\.conda\windows-2025\python.exe -m maya_cython_compile --repo-root C:\PROJECTS\GG\curvenettool --target windows-2025 --json --json-errors verify --scenario target-dry-run
+C:\PROJECTS\GG\gg_CythonCompile\.conda\windows-2025\python.exe -m maya_cython_compile --repo-root C:\PROJECTS\GG\curvenettool --target windows-2025 --json --json-errors verify --scenario target-run
+```
+
+The CurvenetTool `matteo` branch was used as a real-world Windows Maya 2025 validation case on 2026-04-24. The tested repo was a flat Maya script layout staged into package `curvenettool` through `build_tree.source_mappings`, `rewrite_local_imports`, and `import_rewrites`.
+
+The full `target-run` passed:
+
+- created `.conda/windows-2025`
+- built `dist/windows-2025/curvenettool_maya-0.1.0-cp311-cp311-win_amd64.whl`
+- smoked the compiled modules under `C:\Program Files\Autodesk\Maya2025\bin\mayapy.exe`
+- assembled `dist/module/windows-2025/CurveDeform/`
+- packaged `dist/release/windows-2025/CurveDeform-0.1.0-maya2025-windows.zip`
+
+The smoke step emitted a non-fatal Maya SWIG memory warning after the configured resource check returned `True`.
