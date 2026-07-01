@@ -24,6 +24,7 @@ from maya_cython_compile.pipeline import (
     conda_command,
     ensure_maya_build_runtime,
     package,
+    probe_devkit_runtime,
     probe_maya_runtime,
     python_version_matches_target,
     render_target_environment_yaml,
@@ -418,6 +419,88 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(manifest["sha256"], hashlib.sha256(wheel_path.read_bytes()).hexdigest())
         self.assertEqual(manifest["build"]["target_name"], "linux-2024")
         self.assertEqual(manifest["build"]["platform"], "linux")
+
+    def test_build_can_use_devkit_runtime_metadata(self) -> None:
+        repo_root = make_temp_repo("pipeline-build-devkit-env")
+        write_multi_target_build_config(repo_root)
+        env_path = repo_root / ".conda" / "windows-2025"
+        env_path.mkdir(parents=True, exist_ok=True)
+        (env_path / "libs").mkdir(parents=True, exist_ok=True)
+        python_lib = env_path / "libs" / "python311.lib"
+        python_lib.write_text("fake import lib", encoding="utf-8")
+        devkit_base = repo_root / "Autodesk_Maya_2025_DEVKIT" / "devkitBase"
+        include_dir = devkit_base / "include" / "Python311" / "Python"
+        (devkit_base / "lib").mkdir(parents=True, exist_ok=True)
+        include_dir.mkdir(parents=True, exist_ok=True)
+        (include_dir / "Python.h").write_text("/* fake */", encoding="utf-8")
+        mayapy = repo_root / "Maya2025" / "bin" / "mayapy.exe"
+        mayapy.parent.mkdir(parents=True, exist_ok=True)
+        mayapy.write_text("", encoding="utf-8")
+        config = resolve_config(
+            repo_root,
+            target="windows-2025",
+            conda_exe=sys.executable,
+            env_path=str(env_path),
+            maya_py=str(mayapy),
+            devkit_root=str(devkit_base.parent),
+        )
+        captured_env: dict[str, str] = {}
+
+        def capture_run_command(
+            command: list[str],
+            *,
+            cwd: Path,
+            env: dict[str, str] | None = None,
+            verbose: bool = False,
+            error_code: int,
+        ) -> subprocess.CompletedProcess[str]:
+            del command, cwd, verbose, error_code
+            if env is not None:
+                captured_env.update(env)
+            write_fake_artifact_wheel(
+                repo_root,
+                target_name="windows-2025",
+                platform="windows",
+                maya_version="2025",
+                python_version="3.11",
+                module_name="MayaToolWin",
+                write_manifest=False,
+            )
+            return subprocess.CompletedProcess(args=["python"], returncode=0, stdout="", stderr="")
+
+        with (
+            mock.patch("maya_cython_compile.pipeline.prepare_build_tree", return_value=repo_root),
+            mock.patch("maya_cython_compile.pipeline.run_command", side_effect=capture_run_command),
+        ):
+            payload = build(config, force=True)
+
+        self.assertTrue(payload["wheel"].endswith("maya_tool-0.1.0-py3-none-any.whl"))
+        self.assertEqual(captured_env["MAYA_PYTHON_INCLUDE"], str(include_dir))
+        self.assertEqual(captured_env["MAYA_PYTHON_LIBDIR"], str(python_lib.parent))
+        self.assertEqual(captured_env["MAYA_PYTHON_LIBNAME"], "python311")
+        self.assertEqual(captured_env["MAYA_PYTHON_LIBRARYFILE"], str(python_lib))
+        self.assertEqual(captured_env["MAYA_RUNTIME_PLATFORM"], "windows")
+        self.assertEqual(captured_env["MAYA_TARGET_PLATFORM"], "windows")
+        self.assertEqual(captured_env["MAYA_PYTHON_VERSION"], "3.11")
+        self.assertEqual(captured_env["MAYA_PYTHON_EXT_SUFFIX"], ".cp311-win_amd64.pyd")
+
+    def test_probe_devkit_runtime_reports_missing_library_until_env_exists(self) -> None:
+        repo_root = make_temp_repo("pipeline-probe-devkit-missing-library")
+        devkit_base = repo_root / "devkitBase"
+        include_dir = devkit_base / "include" / "Python311" / "Python"
+        (devkit_base / "lib").mkdir(parents=True, exist_ok=True)
+        include_dir.mkdir(parents=True, exist_ok=True)
+        (include_dir / "Python.h").write_text("/* fake */", encoding="utf-8")
+
+        payload = probe_devkit_runtime(
+            devkit_base,
+            target_platform="windows",
+            target_python_version="3.11",
+            env_path=repo_root / ".conda" / "windows-2025",
+        )
+
+        self.assertFalse(payload.probe_succeeded)
+        self.assertIn("Could not resolve Python library", payload.error or "")
 
     def test_smoke_rejects_manifest_hash_mismatch(self) -> None:
         repo_root = make_temp_repo("pipeline-smoke-hash-mismatch")

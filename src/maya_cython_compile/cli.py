@@ -22,6 +22,9 @@ VALUE_GLOBAL_FLAGS = {
     "--conda-exe",
     "--env-path",
     "--maya-py",
+    "--devkit-root",
+    "--python-include",
+    "--python-library",
 }
 
 
@@ -48,6 +51,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--conda-exe", help="Override Conda executable path.")
     parser.add_argument("--env-path", help="Override local Conda environment path.")
     parser.add_argument("--maya-py", help="Override mayapy path.")
+    parser.add_argument("--devkit-root", help="Use a Maya devkit root for build-time Python headers.")
+    parser.add_argument("--python-include", help="Override build-time Python include directory.")
+    parser.add_argument("--python-library", help="Override build-time Python import library.")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -146,6 +152,9 @@ def main(argv: list[str] | None = None) -> int:
             conda_exe=args.conda_exe,
             env_path=args.env_path,
             maya_py=args.maya_py,
+            devkit_root=args.devkit_root,
+            python_include=args.python_include,
+            python_library=args.python_library,
         )
         payload = dispatch(args, config)
     except CliError as exc:

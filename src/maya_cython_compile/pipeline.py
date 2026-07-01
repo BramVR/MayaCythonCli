@@ -68,6 +68,7 @@ from .runtime_probe import (
     ensure_maya_build_runtime,
     is_interrupt_returncode,
     normalized_python_version,
+    probe_devkit_runtime,
     probe_maya_runtime,
     python_version_matches_target,
 )
@@ -100,6 +101,7 @@ __all__ = [
     "module_platform_token",
     "normalized_python_version",
     "package",
+    "probe_devkit_runtime",
     "plan_assemble_cleanup",
     "plan_build_cleanup",
     "plan_create_env_refresh",
@@ -140,17 +142,14 @@ def show_config(config: ResolvedConfig) -> dict[str, Any]:
 
 
 def doctor(config: ResolvedConfig) -> dict[str, Any]:
-    maya = probe_maya_runtime(
-        config.local.maya_py,
-        target_platform=config.build.platform,
-        target_python_version=config.build.python_version,
-    )
+    maya = resolve_build_runtime(config, allow_missing_library=True)
     return {
         "config": show_config(config),
         "checks": {
             "conda_exe_exists": conda_executable_exists(config.local.conda_exe),
             "env_exists": config.local.env_path.exists(),
             "maya_py_exists": config.local.maya_py.exists(),
+            "devkit_root_exists": config.local.devkit_root.exists() if config.local.devkit_root else None,
             "maya_probe_ok": maya.probe_succeeded,
             "maya_platform_matches_target": maya.doctor_platform_check(),
             "maya_python_matches_target": maya.doctor_python_check(),
@@ -221,13 +220,6 @@ def build(
             DEPENDENCY_ERROR,
         )
 
-    maya = probe_maya_runtime(
-        config.local.maya_py,
-        target_platform=config.build.platform,
-        target_python_version=config.build.python_version,
-    )
-    ensure_maya_build_runtime(maya, config.local.maya_py)
-
     deletion_targets = plan_build_cleanup(config)
     dist_dir = target_dist_dir(config)
     command = conda_command(
@@ -244,6 +236,7 @@ def build(
         str(dist_dir),
     )
     if dry_run:
+        resolve_build_runtime(config, allow_missing_library=True)
         return render_dry_run(
             "build",
             deletion_targets,
@@ -254,6 +247,9 @@ def build(
                 "artifact_manifest": str(target_artifact_manifest_path(config)),
             },
         )
+
+    maya = resolve_build_runtime(config)
+    ensure_maya_build_runtime(maya, config.local.maya_py)
 
     require_confirmation(
         "build",
@@ -275,6 +271,24 @@ def build(
     artifact = resolve_built_artifact(config, error_code=BUILD_ERROR, require_manifest=False, require_unique=True)
     write_artifact_manifest(config, artifact.wheel, artifact.metadata)
     return {"wheel": str(artifact.wheel), "artifact_manifest": str(target_artifact_manifest_path(config))}
+
+
+def resolve_build_runtime(config: ResolvedConfig, *, allow_missing_library: bool = False) -> MayaRuntimeProbe:
+    if config.local.devkit_root is not None:
+        return probe_devkit_runtime(
+            config.local.devkit_root,
+            target_platform=config.build.platform,
+            target_python_version=config.build.python_version,
+            env_path=config.local.env_path,
+            python_include=config.local.python_include,
+            python_library=config.local.python_library,
+            allow_missing_library=allow_missing_library,
+        )
+    return probe_maya_runtime(
+        config.local.maya_py,
+        target_platform=config.build.platform,
+        target_python_version=config.build.python_version,
+    )
 
 
 def smoke(

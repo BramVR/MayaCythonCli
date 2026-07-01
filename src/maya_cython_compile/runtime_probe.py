@@ -200,6 +200,65 @@ def probe_maya_runtime(
     )
 
 
+def probe_devkit_runtime(
+    devkit_root: Path,
+    *,
+    target_platform: str,
+    target_python_version: str,
+    env_path: Path,
+    python_include: Path | None = None,
+    python_library: Path | None = None,
+    allow_missing_library: bool = False,
+) -> MayaRuntimeProbe:
+    resolved_devkit_root = _resolve_devkit_root(devkit_root)
+    if resolved_devkit_root is None:
+        return _runtime_probe_result(
+            maya_py=devkit_root,
+            target_platform=target_platform,
+            target_python_version=target_python_version,
+            error=f"devkit root not found: {devkit_root}",
+        )
+
+    include_dir = _resolve_devkit_include_dir(
+        resolved_devkit_root,
+        target_python_version=target_python_version,
+        python_include=python_include,
+    )
+    library_file = _resolve_devkit_library_file(
+        resolved_devkit_root,
+        target_python_version=target_python_version,
+        target_platform=target_platform,
+        env_path=env_path,
+        python_library=python_library,
+    )
+    library_dir = str(library_file.parent) if library_file else None
+    library_name = _library_name_from_filename(library_file.name) if library_file else None
+    error = None
+    if include_dir is None:
+        error = f"Could not resolve Python headers from devkit root: {resolved_devkit_root}"
+    elif library_file is None and not allow_missing_library:
+        error = f"Could not resolve Python library for target {target_python_version} from devkit or env."
+
+    return MayaRuntimeProbe(
+        maya_py=f"devkit:{resolved_devkit_root}",
+        probe_succeeded=error is None,
+        error=error,
+        target_platform=target_platform,
+        target_python_version=target_python_version,
+        runtime_platform=target_platform,
+        platform_matches_target=True,
+        python_version=target_python_version,
+        python_matches_target=True,
+        python_prefix=str(env_path) if env_path.exists() else None,
+        python_base_prefix=str(env_path) if env_path.exists() else None,
+        include_dir=str(include_dir) if include_dir else None,
+        library_dir=library_dir,
+        library_name=library_name,
+        library_file=str(library_file) if library_file else None,
+        extension_suffix=_inferred_extension_suffix(target_python_version, target_platform),
+    )
+
+
 def ensure_maya_build_runtime(maya: MayaRuntimeProbe, maya_py: Path) -> None:
     if not maya.probe_succeeded:
         message = maya.error or f"Could not probe Maya Python runtime from {maya_py}"
@@ -451,3 +510,77 @@ def _library_name_from_filename(filename: str) -> str:
     if normalized.startswith("lib") and not filename.lower().endswith(".lib"):
         normalized = normalized[3:]
     return normalized
+
+
+def _resolve_devkit_root(devkit_root: Path) -> Path | None:
+    candidates = [devkit_root]
+    if devkit_root.name != "devkitBase":
+        candidates.append(devkit_root / "devkitBase")
+    for candidate in candidates:
+        if (candidate / "include").is_dir() and (candidate / "lib").is_dir():
+            return candidate
+    return None
+
+
+def _resolve_devkit_include_dir(
+    devkit_root: Path,
+    *,
+    target_python_version: str,
+    python_include: Path | None,
+) -> Path | None:
+    if python_include and (python_include / "Python.h").is_file():
+        return python_include
+
+    version_parts = normalized_python_version(target_python_version)
+    candidates: list[Path] = []
+    if len(version_parts) >= 2:
+        major, minor = version_parts[:2]
+        candidates.extend(
+            [
+                devkit_root / "include" / f"Python{major}{minor}" / "Python",
+                devkit_root / "include" / f"Python{major}{minor}",
+                devkit_root / "include" / f"python{major}.{minor}",
+            ]
+        )
+    candidates.extend([devkit_root / "include", devkit_root / "include" / "Python"])
+    return _find_python_header_dir(candidates)
+
+
+def _find_python_header_dir(candidate_dirs: list[Path]) -> Path | None:
+    for candidate_dir in _unique_existing_directories(candidate_dirs):
+        if (candidate_dir / "Python.h").is_file():
+            return candidate_dir
+    return None
+
+
+def _resolve_devkit_library_file(
+    devkit_root: Path,
+    *,
+    target_python_version: str,
+    target_platform: str,
+    env_path: Path,
+    python_library: Path | None,
+) -> Path | None:
+    if python_library and python_library.is_file():
+        return python_library
+
+    candidate_names = _inferred_python_library_names(target_python_version, target_platform)
+    candidate_dirs = [
+        devkit_root / "lib",
+        env_path / "libs",
+        env_path / "lib",
+        env_path / "Library" / "lib",
+    ]
+    return _find_python_library_file(candidate_dirs, candidate_names)
+
+
+def _inferred_extension_suffix(target_python_version: str, target_platform: str) -> str | None:
+    version_parts = normalized_python_version(target_python_version)
+    if len(version_parts) < 2:
+        return None
+    major, minor = version_parts[:2]
+    if target_platform == "windows":
+        return f".cp{major}{minor}-win_amd64.pyd"
+    if target_platform == "macos":
+        return f".cpython-{major}{minor}-darwin.so"
+    return f".cpython-{major}{minor}-x86_64-linux-gnu.so"

@@ -59,6 +59,9 @@ Supported top-level keys:
 | `conda_exe` | string | fallback Conda entrypoint path or command |
 | `env_path` | path string | fallback local build env path |
 | `maya_py` | path string | fallback `mayapy` executable |
+| `devkit_root` | path string | optional Maya devkit root used for build-time Python headers and libraries |
+| `python_include` | path string | optional explicit Python include directory containing `Python.h` |
+| `python_library` | path string | optional explicit Python import library such as `python311.lib` |
 | `targets` | object | per-target local path overrides |
 
 Supported per-target keys under `targets.<name>`:
@@ -68,6 +71,9 @@ Supported per-target keys under `targets.<name>`:
 | `conda_exe` | string | target-specific Conda entrypoint path or command |
 | `env_path` | path string | target-specific build env path |
 | `maya_py` | path string | target-specific `mayapy` executable |
+| `devkit_root` | path string | target-specific Maya devkit root |
+| `python_include` | path string | target-specific Python include directory |
+| `python_library` | path string | target-specific Python import library |
 
 Example:
 
@@ -96,6 +102,9 @@ Example:
 | `MAYA_CYTHON_COMPILE_CONDA_EXE` | overrides `conda_exe` |
 | `MAYA_CYTHON_COMPILE_ENV_PATH` | overrides `env_path` |
 | `MAYA_CYTHON_COMPILE_MAYA_PY` | overrides `maya_py` |
+| `MAYA_CYTHON_COMPILE_DEVKIT_ROOT` | overrides `devkit_root` |
+| `MAYA_CYTHON_COMPILE_PYTHON_INCLUDE` | overrides `python_include` |
+| `MAYA_CYTHON_COMPILE_PYTHON_LIBRARY` | overrides `python_library` |
 
 ## Built-in defaults
 

@@ -125,6 +125,9 @@ class ConfigTests(unittest.TestCase):
                     "conda_exe": "tools/conda.bat",
                     "env_path": ".conda/custom-build",
                     "maya_py": "maya/bin/mayapy.exe",
+                    "devkit_root": "Autodesk/Maya2025Devkit",
+                    "python_include": "Autodesk/Maya2025Devkit/devkitBase/include/Python311/Python",
+                    "python_library": ".conda/custom-build/libs/python311.lib",
                 }
             ),
             encoding="utf-8",
@@ -135,6 +138,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.local.conda_exe, str((repo_root / "tools/conda.bat").resolve()))
         self.assertEqual(config.local.env_path, (repo_root / ".conda/custom-build").resolve())
         self.assertEqual(config.local.maya_py, (repo_root / "maya/bin/mayapy.exe").resolve())
+        self.assertEqual(config.local.devkit_root, (repo_root / "Autodesk/Maya2025Devkit").resolve())
+        self.assertEqual(
+            config.local.python_include,
+            (repo_root / "Autodesk/Maya2025Devkit/devkitBase/include/Python311/Python").resolve(),
+        )
+        self.assertEqual(config.local.python_library, (repo_root / ".conda/custom-build/libs/python311.lib").resolve())
 
     def test_build_default_target_is_used_when_no_override_is_set(self) -> None:
         repo_root = make_temp_repo("config-build-default-target")
@@ -176,6 +185,9 @@ class ConfigTests(unittest.TestCase):
                 "MAYA_CYTHON_COMPILE_CONDA_EXE": r"C:\env\conda.bat",
                 "MAYA_CYTHON_COMPILE_ENV_PATH": r"C:\env\build-env",
                 "MAYA_CYTHON_COMPILE_MAYA_PY": r"C:\env\mayapy.exe",
+                "MAYA_CYTHON_COMPILE_DEVKIT_ROOT": r"C:\env\devkit",
+                "MAYA_CYTHON_COMPILE_PYTHON_INCLUDE": r"C:\env\include",
+                "MAYA_CYTHON_COMPILE_PYTHON_LIBRARY": r"C:\env\libs\python311.lib",
             },
             clear=False,
         ):
@@ -185,12 +197,18 @@ class ConfigTests(unittest.TestCase):
                 conda_exe=r"C:\override\conda.bat",
                 env_path=r"C:\override\build-env",
                 maya_py=r"C:\override\mayapy.exe",
+                devkit_root=r"C:\override\devkit",
+                python_include=r"C:\override\include",
+                python_library=r"C:\override\libs\python311.lib",
             )
 
         self.assertEqual(config.build.target_name, "windows-2025")
         self.assertEqual(config.local.conda_exe, r"C:\override\conda.bat")
         self.assertEqual(str(config.local.env_path), r"C:\override\build-env")
         self.assertEqual(str(config.local.maya_py), r"C:\override\mayapy.exe")
+        self.assertEqual(str(config.local.devkit_root), r"C:\override\devkit")
+        self.assertEqual(str(config.local.python_include), r"C:\override\include")
+        self.assertEqual(str(config.local.python_library), r"C:\override\libs\python311.lib")
 
     def test_target_specific_local_paths_override_root_local_paths(self) -> None:
         repo_root = make_temp_repo("config-target-local-paths")
@@ -202,10 +220,13 @@ class ConfigTests(unittest.TestCase):
                     "conda_exe": "tools/root-conda",
                     "env_path": ".conda/root-build",
                     "maya_py": "maya/root/mayapy",
+                    "devkit_root": "maya/root/devkit",
                     "targets": {
                         "linux-2024": {
                             "env_path": ".conda/linux-build",
                             "maya_py": "maya/linux/mayapy",
+                            "devkit_root": "maya/linux/devkit",
+                            "python_library": ".conda/linux-build/lib/libpython3.10.so",
                         }
                     },
                 }
@@ -218,6 +239,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.local.conda_exe, str((repo_root / "tools/root-conda").resolve()))
         self.assertEqual(config.local.env_path, (repo_root / ".conda/linux-build").resolve())
         self.assertEqual(config.local.maya_py, (repo_root / "maya/linux/mayapy").resolve())
+        self.assertEqual(config.local.devkit_root, (repo_root / "maya/linux/devkit").resolve())
+        self.assertEqual(config.local.python_library, (repo_root / ".conda/linux-build/lib/libpython3.10.so").resolve())
 
     def test_resolve_config_uses_default_python_version_when_not_declared(self) -> None:
         repo_root = make_temp_repo("config-default-python-version")

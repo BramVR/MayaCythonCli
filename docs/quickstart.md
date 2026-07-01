@@ -38,6 +38,8 @@ Default paths:
 
 Override them with CLI flags, environment variables, or `<repo-root>/.maya-cython-compile.json`.
 
+For runner builds that have the Maya devkit but where `mayapy` does not expose usable build headers or import libraries, set `MAYA_CYTHON_COMPILE_DEVKIT_ROOT` to the devkit root. The build step will resolve `Python.h` from the devkit and `python311.lib` from either the devkit, the selected Conda env, or `MAYA_CYTHON_COMPILE_PYTHON_LIBRARY`. The smoke step still uses `maya_py`.
+
 If you build multiple targets from one repo clone, keep the default target-specific env paths or set explicit target-specific `env_path`, `maya_py`, and `conda_exe` entries in `.maya-cython-compile.json.targets`.
 
 ## Install the CLI

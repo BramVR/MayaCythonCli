@@ -50,8 +50,17 @@ REQUIRED_BUILD_KEYS = {
 SMOKE_KEYS = {"callable", "compiled_modules", "resource_check"}
 BUILD_TREE_KEYS = {"source_mappings", "rewrite_local_imports", "import_rewrites"}
 SOURCE_MAPPING_KEYS = {"source", "destination", "expand_children"}
-LOCAL_CONFIG_KEYS = {"target", "conda_exe", "env_path", "maya_py", "targets"}
-LOCAL_TARGET_KEYS = {"conda_exe", "env_path", "maya_py"}
+LOCAL_CONFIG_KEYS = {
+    "target",
+    "conda_exe",
+    "env_path",
+    "maya_py",
+    "devkit_root",
+    "python_include",
+    "python_library",
+    "targets",
+}
+LOCAL_TARGET_KEYS = {"conda_exe", "env_path", "maya_py", "devkit_root", "python_include", "python_library"}
 
 
 @dataclass(slots=True)
@@ -97,6 +106,9 @@ class LocalConfig:
     conda_exe: str
     env_path: Path
     maya_py: Path
+    devkit_root: Path | None
+    python_include: Path | None
+    python_library: Path | None
     config_path: Path
 
 
@@ -163,6 +175,9 @@ def resolve_config(
     conda_exe: str | None = None,
     env_path: str | None = None,
     maya_py: str | None = None,
+    devkit_root: str | None = None,
+    python_include: str | None = None,
+    python_library: str | None = None,
 ) -> ResolvedConfig:
     repo_root = repo_root.resolve()
     config_file = Path(config_path).resolve() if config_path else default_config_path(repo_root)
@@ -200,6 +215,27 @@ def resolve_config(
         or file_payload.get("maya_py")
         or DEFAULT_MAYA_PY,
     )
+    resolved_devkit_root = _resolve_optional_path(
+        repo_root,
+        devkit_root
+        or os.environ.get("MAYA_CYTHON_COMPILE_DEVKIT_ROOT")
+        or target_payload.get("devkit_root")
+        or file_payload.get("devkit_root"),
+    )
+    resolved_python_include = _resolve_optional_path(
+        repo_root,
+        python_include
+        or os.environ.get("MAYA_CYTHON_COMPILE_PYTHON_INCLUDE")
+        or target_payload.get("python_include")
+        or file_payload.get("python_include"),
+    )
+    resolved_python_library = _resolve_optional_path(
+        repo_root,
+        python_library
+        or os.environ.get("MAYA_CYTHON_COMPILE_PYTHON_LIBRARY")
+        or target_payload.get("python_library")
+        or file_payload.get("python_library"),
+    )
 
     return ResolvedConfig(
         repo_root=repo_root,
@@ -208,6 +244,9 @@ def resolve_config(
             conda_exe=resolved_conda,
             env_path=resolved_env,
             maya_py=resolved_maya_py,
+            devkit_root=resolved_devkit_root,
+            python_include=resolved_python_include,
+            python_library=resolved_python_library,
             config_path=config_file,
         ),
         available_targets=available_targets,
@@ -225,6 +264,9 @@ def as_dict(config: ResolvedConfig) -> dict[str, Any]:
         "conda_exe": config.local.conda_exe,
         "env_path": str(config.local.env_path),
         "maya_py": str(config.local.maya_py),
+        "devkit_root": str(config.local.devkit_root) if config.local.devkit_root else None,
+        "python_include": str(config.local.python_include) if config.local.python_include else None,
+        "python_library": str(config.local.python_library) if config.local.python_library else None,
         "distribution_name": config.build.distribution_name,
         "package_name": config.build.package_name,
         "package_dir": config.build.package_dir,
@@ -265,6 +307,12 @@ def _resolve_path(repo_root: Path, raw_path: str) -> Path:
     if path.is_absolute():
         return path
     return (repo_root / path).resolve()
+
+
+def _resolve_optional_path(repo_root: Path, raw_path: str | None) -> Path | None:
+    if raw_path is None:
+        return None
+    return _resolve_path(repo_root, raw_path)
 
 
 def _default_env_path(target_name: str) -> str:
@@ -470,7 +518,7 @@ def _validate_source_mappings(raw_value: Any, *, subject: str) -> None:
 
 def _validate_local_config_payload(payload: dict[str, Any]) -> None:
     _reject_unknown_keys(payload, LOCAL_CONFIG_KEYS, "local config")
-    for key in ("target", "conda_exe", "env_path", "maya_py"):
+    for key in ("target", "conda_exe", "env_path", "maya_py", "devkit_root", "python_include", "python_library"):
         _require_optional_non_empty_string(payload, key, "local config")
 
     targets = payload.get("targets")
